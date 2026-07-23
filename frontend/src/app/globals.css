@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+.font-heebo {
+  font-family: 'Heebo Variable', 'Heebo', sans-serif;
+}
+
+.markdown-content {
+  line-height: 1.75;
+}
+.markdown-content p {
+  margin-bottom: 0.85rem;
+}
+.markdown-content strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+.markdown-content ul,
+.markdown-content ol {
+  margin: 0.5rem 0 0.85rem;
+  padding-inline-start: 1.5rem;
+}
+.markdown-content ul {
+  list-style: disc;
+}
+.markdown-content ol {
+  list-style: decimal;
+}
+.markdown-content li {
+  margin-bottom: 0.35rem;
+}
+.markdown-content li > p {
+  margin-bottom: 0.25rem;
+}
