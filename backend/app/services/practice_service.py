@@ -27,14 +27,7 @@ class PracticeService:
         limit: int = 10,
         mode: str = "adaptive",
     ) -> dict:
-        """Return published questions for the student-facing practice pool.
-
-        Correctness and solution data are deliberately stripped by
-        Question.to_dict(reveal_answers=False). The adaptive mode uses the
-        student's recent accuracy to choose a target difficulty, while
-        retaining a deterministic fallback so a sparse bank still produces
-        questions.
-        """
+        """Return published questions for the student-facing practice pool."""
         limit = max(1, min(limit, 50))
         if mode not in {"adaptive", "all"}:
             raise AppError("Invalid practice mode", status_code=400)
@@ -47,10 +40,6 @@ class PracticeService:
             category = db.session.get(Category, category_id)
             if not category:
                 raise AppError("Category not found", status_code=404)
-
-            # The seeded bank uses one parent level for subcategories. Include
-            # the selected category and its direct children so the main
-            # category cards work without duplicating questions.
             child_ids = [row.id for row in Category.query.filter_by(parent_id=category_id).all()]
             query = query.filter(Question.category_id.in_([category_id, *child_ids]))
 
@@ -73,9 +62,6 @@ class PracticeService:
             if difficulty_query.first() is not None:
                 query = difficulty_query
 
-        # Prefer questions the student has not answered yet. If the bank is
-        # smaller than the requested limit, fill the remainder from all
-        # published questions matching the same pool.
         attempted_subquery = db.session.query(PracticeAttempt.question_id).filter(
             PracticeAttempt.user_id == user_id
         )
@@ -99,6 +85,71 @@ class PracticeService:
         }
 
     @staticmethod
+    def list_question_bank(
+        category_id: int | None = None,
+        difficulty: str | None = None,
+        page: int = 1,
+        per_page: int = 24,
+        search: str | None = None,
+    ) -> dict:
+        """Return the complete published bank in deterministic pages.
+
+        This endpoint is intentionally separate from adaptive practice: the
+        learning center needs to browse every bank item, while practice needs
+        randomized/adaptive selection. Correctness is never exposed here.
+        """
+        page = max(1, page)
+        per_page = max(1, min(per_page, 60))
+        if difficulty and difficulty not in {"easy", "medium", "exam"}:
+            raise AppError("Invalid difficulty", status_code=400)
+
+        query = Question.query.filter(Question.status == ContentStatus.PUBLISHED)
+        if category_id is not None:
+            category = db.session.get(Category, category_id)
+            if not category:
+                raise AppError("Category not found", status_code=404)
+            child_ids = [row.id for row in Category.query.filter_by(parent_id=category_id).all()]
+            query = query.filter(Question.category_id.in_([category_id, *child_ids]))
+        if difficulty:
+            query = query.filter(Question.difficulty == difficulty)
+
+        questions = query.order_by(Question.id.asc()).all()
+        normalized_search = (search or "").strip().lower()
+        if normalized_search:
+            filtered = []
+            for question in questions:
+                metadata = question.question_metadata or {}
+                haystack = " ".join(
+                    str(value)
+                    for value in (
+                        metadata.get("bank_key"),
+                        metadata.get("main_category"),
+                        metadata.get("subcategory"),
+                        metadata.get("skill"),
+                        metadata.get("tags", []),
+                        (question.body or {}).get("body", ""),
+                    )
+                ).lower()
+                if normalized_search in haystack:
+                    filtered.append(question)
+            questions = filtered
+
+        total = len(questions)
+        start = (page - 1) * per_page
+        page_questions = questions[start : start + per_page]
+        total_pages = (total + per_page - 1) // per_page if total else 0
+
+        return {
+            "questions": [PracticeService._public_question(question) for question in page_questions],
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_previous": page > 1 and total_pages > 0,
+        }
+
+    @staticmethod
     def get_practice_question(question_id: int) -> dict:
         question = db.session.get(Question, question_id)
         if not question or question.status != ContentStatus.PUBLISHED:
@@ -107,7 +158,6 @@ class PracticeService:
 
     @staticmethod
     def _public_question(question: Question) -> dict:
-        """Serialize a question for a student before an answer is submitted."""
         data = question.to_dict(include_answers=True, reveal_answers=False)
         metadata = question.question_metadata or {}
         data["bank_key"] = metadata.get("bank_key")
@@ -121,12 +171,6 @@ class PracticeService:
 
     @staticmethod
     def submit_answer(user_id: int, question_id: int, answer_id: int) -> dict:
-        """The only place answer-correctness is decided.
-
-        The client sends an answer_id; the server looks up is_correct itself
-        and returns the verdict + explanation. Correctness is never trusted
-        from, or precomputed on, the client.
-        """
         question = db.session.get(Question, question_id)
         if not question or question.status != ContentStatus.PUBLISHED:
             raise AppError("Question not found", status_code=404)
@@ -136,7 +180,6 @@ class PracticeService:
             raise AppError("Answer does not belong to this question", status_code=422)
 
         is_correct = answer.is_correct
-
         already_earned_xp = (
             is_correct
             and PracticeAttempt.query.filter_by(
@@ -163,7 +206,6 @@ class PracticeService:
             )
 
         ProgressService.record_practice_attempt(user_id, question.category_id, is_correct, xp_earned)
-
         correct_answer = next((a for a in question.answers if a.is_correct), None)
 
         return {
