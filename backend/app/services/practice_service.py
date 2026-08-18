@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import func
+from sqlalchemy import cast, func, String
 
 from app.extensions import db
 from app.models.answer import Answer
@@ -16,6 +16,7 @@ from app.utils.exceptions import AppError
 
 XP_PER_CORRECT_ANSWER = 10
 XP_LESSON_COMPLETED = 50
+QUESTION_BANK_PAGE_SIZES = (24, 60, 120, 240, 500)
 
 
 class PracticeService:
@@ -92,52 +93,49 @@ class PracticeService:
         per_page: int = 24,
         search: str | None = None,
     ) -> dict:
-        """Return the complete published bank in deterministic pages.
+        """Return the complete published bank in deterministic, database-backed pages.
 
-        This endpoint is intentionally separate from adaptive practice: the
-        learning center needs to browse every bank item, while practice needs
-        randomized/adaptive selection. Correctness is never exposed here.
+        Search and pagination are deliberately executed by the database rather
+        than loading the entire published bank into Python. This keeps the
+        learning center responsive as the bank grows into thousands of items.
         """
         page = max(1, page)
-        per_page = max(1, min(per_page, 60))
+        per_page = max(1, min(per_page, QUESTION_BANK_PAGE_SIZES[-1]))
         if difficulty and difficulty not in {"easy", "medium", "exam"}:
             raise AppError("Invalid difficulty", status_code=400)
 
         query = Question.query.filter(Question.status == ContentStatus.PUBLISHED)
+
         if category_id is not None:
             category = db.session.get(Category, category_id)
             if not category:
                 raise AppError("Category not found", status_code=404)
             child_ids = [row.id for row in Category.query.filter_by(parent_id=category_id).all()]
             query = query.filter(Question.category_id.in_([category_id, *child_ids]))
+
         if difficulty:
             query = query.filter(Question.difficulty == difficulty)
 
-        questions = query.order_by(Question.id.asc()).all()
-        normalized_search = (search or "").strip().lower()
+        normalized_search = (search or "").strip()
         if normalized_search:
-            filtered = []
-            for question in questions:
-                metadata = question.question_metadata or {}
-                haystack = " ".join(
-                    str(value)
-                    for value in (
-                        metadata.get("bank_key"),
-                        metadata.get("main_category"),
-                        metadata.get("subcategory"),
-                        metadata.get("skill"),
-                        metadata.get("tags", []),
-                        (question.body or {}).get("body", ""),
-                    )
-                ).lower()
-                if normalized_search in haystack:
-                    filtered.append(question)
-            questions = filtered
+            pattern = f"%{normalized_search}%"
+            query = query.filter(
+                func.concat(
+                    cast(Question.body, String),
+                    " ",
+                    cast(Question.question_metadata, String),
+                ).ilike(pattern)
+            )
 
-        total = len(questions)
-        start = (page - 1) * per_page
-        page_questions = questions[start : start + per_page]
+        total = query.order_by(None).count()
         total_pages = (total + per_page - 1) // per_page if total else 0
+        offset = (page - 1) * per_page
+        page_questions = (
+            query.order_by(Question.id.asc())
+            .offset(offset)
+            .limit(per_page)
+            .all()
+        )
 
         return {
             "questions": [PracticeService._public_question(question) for question in page_questions],
