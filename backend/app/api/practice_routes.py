@@ -1,6 +1,7 @@
 from flask import Blueprint, g, jsonify, request
 
 from app.schemas.practice_schema import submit_answer_schema
+from app.services.adaptive_practice_service import AdaptivePracticeService
 from app.services.practice_service import PracticeService
 from app.services.progress_service import ProgressService
 from app.utils.decorators import jwt_required
@@ -15,6 +16,24 @@ def list_practice_questions():
     category_id = request.args.get("category_id", type=int)
     difficulty = request.args.get("difficulty")
     mode = request.args.get("mode", default="adaptive")
+
+    if mode == "adaptive":
+        selected = AdaptivePracticeService.select(
+            user_id=g.current_user["id"],
+            category_id=category_id,
+            difficulty=difficulty,
+            limit=limit,
+        )
+        return jsonify({
+            "questions": [PracticeService._public_question(question) for question in selected["questions"]],
+            "count": len(selected["questions"]),
+            "mode": "adaptive",
+            "target": selected["target"],
+            "profile": {
+                "attempts_considered": selected["profile"]["attempts_considered"],
+                "weakest_skill": selected["profile"]["weakest_skill"],
+            },
+        }), 200
 
     result = PracticeService.list_practice_questions(
         user_id=g.current_user["id"],
