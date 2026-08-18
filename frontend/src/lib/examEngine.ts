@@ -37,7 +37,7 @@ export function hydrateExam(session: ExamSession, clientNowMs = Date.now()): Exa
     phase: session.status === 'SUBMITTED' || session.status === 'EXPIRED' ? 'FINISHED' : 'RUNNING',
     currentSectionIndex: session.current_section_index,
     currentQuestionIndex: firstQuestion?.sequence_number ?? session.current_question_index,
-    serverNowOffsetMs: session.started_at ? Date.parse(session.started_at) - clientNowMs : 0,
+    serverNowOffsetMs: 0,
   };
 }
 
@@ -46,7 +46,13 @@ export function reduceExamState(state: ExamClientState, event: ExamEvent): ExamC
     case 'HYDRATE':
       return hydrateExam(event.session, event.clientNowMs);
     case 'SELECT_ANSWER':
-      return { ...state, selectedAnswers: { ...state.selectedAnswers, [event.questionId]: event.answerId } };
+      return {
+        ...state,
+        selectedAnswers: {
+          ...state.selectedAnswers,
+          [event.questionId]: event.answerId,
+        },
+      };
     case 'VIEWED':
       return state.viewedQuestionIds.includes(event.questionId)
         ? state
@@ -57,8 +63,14 @@ export function reduceExamState(state: ExamClientState, event: ExamEvent): ExamC
       return { ...state, currentQuestionIndex: event.nextQuestionIndex };
     case 'SECTION_EXPIRED':
       return { ...state, phase: 'SECTION_EXPIRED' };
-    case 'SECTION_SYNCED':
-      return hydrateExam(event.session, event.clientNowMs);
+    case 'SECTION_SYNCED': {
+      const next = hydrateExam(event.session, event.clientNowMs);
+      return {
+        ...next,
+        selectedAnswers: state.selectedAnswers,
+        viewedQuestionIds: state.viewedQuestionIds,
+      };
+    }
     case 'SUBMIT_STARTED':
       return { ...state, phase: 'SUBMITTING' };
     case 'FINISHED':
@@ -71,12 +83,24 @@ export function reduceExamState(state: ExamClientState, event: ExamEvent): ExamC
 }
 
 export function currentQuestion(session: ExamSession, state: ExamClientState): ExamQuestion | undefined {
-  return session.questions.find((q) => q.sequence_number === state.currentQuestionIndex && q.section_id === session.sections[state.currentSectionIndex]?.id);
+  return session.questions.find(
+    (q) =>
+      q.sequence_number === state.currentQuestionIndex &&
+      q.section_id === session.sections[state.currentSectionIndex]?.id,
+  );
 }
 
-export function questionsForCurrentSection(session: ExamSession): ExamQuestion[] {
-  const sectionId = session.sections[session.current_section_index]?.id;
-  return session.questions.filter((q) => q.section_id === sectionId).sort((a, b) => a.sequence_number - b.sequence_number);
+export function questionsForCurrentSection(session: ExamSession, state?: ExamClientState): ExamQuestion[] {
+  const sectionIndex = state?.currentSectionIndex ?? session.current_section_index;
+  return questionsForSection(session, sectionIndex);
+}
+
+export function questionsForSection(session: ExamSession, sectionIndex: number): ExamQuestion[] {
+  const sectionId = session.sections[sectionIndex]?.id;
+  if (sectionId === undefined) return [];
+  return session.questions
+    .filter((q) => q.section_id === sectionId)
+    .sort((a, b) => a.sequence_number - b.sequence_number);
 }
 
 export function remainingSectionMs(session: ExamSession, clientNowMs = Date.now()): number {
@@ -85,8 +109,5 @@ export function remainingSectionMs(session: ExamSession, clientNowMs = Date.now(
 }
 
 function firstQuestionForSection(session: ExamSession, sectionIndex: number): ExamQuestion | undefined {
-  const sectionId = session.sections[sectionIndex]?.id;
-  return session.questions
-    .filter((q) => q.section_id === sectionId)
-    .sort((a, b) => a.sequence_number - b.sequence_number)[0];
+  return questionsForSection(session, sectionIndex)[0];
 }
