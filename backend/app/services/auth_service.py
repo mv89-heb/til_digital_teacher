@@ -35,7 +35,12 @@ class AuthService:
         user = User.query.filter(db.func.lower(User.email) == normalized_email).first()
         if not user or not check_password_hash(user.password_hash, password):
             raise AppError("Invalid email or password", status_code=401)
-        if not user.is_active:
+
+        # The current users table does not have an is_active column. Treat
+        # existing users as active until an explicit account-status field is
+        # introduced through a migration. Using getattr also keeps login
+        # compatible with older database schemas during staged deployments.
+        if getattr(user, "is_active", True) is False:
             raise AppError("Account is inactive", status_code=403)
 
         now = datetime.now(timezone.utc)
@@ -47,7 +52,12 @@ class AuthService:
         token = jwt.encode(payload, AuthService.SECRET_KEY, algorithm="HS256")
 
         user.last_login_at = now
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+
         return {"user": user.to_dict(), "token": token}
 
     @staticmethod
@@ -64,7 +74,9 @@ class AuthService:
             raise AppError("Invalid token", status_code=401)
 
         user = db.session.get(User, user_id)
-        if not user or not user.is_active:
+        if not user:
+            raise AppError("User not found", status_code=401)
+        if getattr(user, "is_active", True) is False:
             raise AppError("User not found", status_code=401)
 
         return user.to_dict()
