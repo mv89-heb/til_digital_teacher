@@ -52,8 +52,9 @@ export function reduceExamState(state: ExamClientState, event: ExamEvent): ExamC
         ? state
         : { ...state, viewedQuestionIds: [...state.viewedQuestionIds, event.questionId] };
     case 'GO_TO_QUESTION':
+      return { ...state, currentQuestionIndex: event.questionIndex };
     case 'NEXT_QUESTION':
-      return { ...state, currentQuestionIndex: event.questionIndex ?? event.nextQuestionIndex };
+      return { ...state, currentQuestionIndex: event.nextQuestionIndex };
     case 'SECTION_EXPIRED':
       return { ...state, phase: 'SECTION_EXPIRED' };
     case 'SECTION_SYNCED':
