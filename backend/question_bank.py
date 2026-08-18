@@ -17,15 +17,14 @@ def _rich(text: str) -> dict:
 
 def _answers(correct: int | float, distractors: list[int | float], explanation: str) -> list[Answer]:
     values = [correct, *distractors[:3]]
-    labels = [str(v) for v in values]
     return [
         Answer(
-            answer_text=label,
+            answer_text=str(value),
             is_correct=(index == 0),
             explanation_if_selected=_rich(explanation if index == 0 else f"לא נכון. {explanation}"),
             order=index + 1,
         )
-        for index, label in enumerate(labels)
+        for index, value in enumerate(values)
     ]
 
 
@@ -85,13 +84,14 @@ def build_question_bank(category_id: int, lesson_id: int | None = None) -> list[
     # 2) Percentages — 50
     for base in range(20, 70):
         n += 1
+        amount = base * 10
         percent = (base % 5 + 1) * 10
-        correct = base * percent // 100
+        correct = amount * percent // 100
         questions.append(_q(
             f"percent-{base}", category_id,
-            f"כמה הם {percent}% מתוך {base}0?",
+            f"כמה הם {percent}% מתוך {amount}?",
             correct, [correct + 5, correct - 5, base + percent],
-            f"{percent}% הם {percent}/100, ולכן {base}0 × {percent}/100 = {correct}.",
+            f"{percent}% הם {percent}/100, ולכן {amount} × {percent}/100 = {correct}.",
             "אחוזים", "אחוזים", n, 15, lesson_id,
         ))
 
@@ -145,7 +145,7 @@ def build_question_bank(category_id: int, lesson_id: int | None = None) -> list[
     # 6) Applied quantitative reasoning — 50
     for x in range(1, 51):
         n += 1
-        price = 40 + x * 3
+        price = 100 + x * 20
         discount = ((x % 4) + 1) * 5
         correct = price * (100 - discount) // 100
         questions.append(_q(
