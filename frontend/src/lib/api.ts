@@ -1,4 +1,4 @@
-import type { Category, DashboardSummary, LessonDetail, LessonProgress, PracticeQuestionPool, SubmitAnswerResult } from '@/types/learning';
+import type { Category, DashboardSummary, LessonDetail, LessonProgress, PracticeQuestionPool, QuestionBankPage, SubmitAnswerResult } from '@/types/learning';
 import type { ExamSession, ExamAnswerResult, ExamResult } from '@/types/exam';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -21,12 +21,19 @@ export async function getCategories(): Promise<Category[]> {
   const data = await fetchApi('/learning/categories');
   return data.categories;
 }
-
 export async function getLesson(lessonId: number | string): Promise<LessonDetail> {
-  const data = await fetchApi(`/learning/lessons/${lessonId}`);
-  return data.lesson;
+  const data = await fetchApi(`/learning/lessons/${lessonId}`); return data.lesson;
 }
-
+export async function getQuestionBank(token: string, options: { categoryId?: number; difficulty?: 'easy' | 'medium' | 'exam'; page?: number; perPage?: number; search?: string } = {}): Promise<QuestionBankPage> {
+  const params = new URLSearchParams();
+  if (options.categoryId) params.set('category_id', String(options.categoryId));
+  if (options.difficulty) params.set('difficulty', options.difficulty);
+  if (options.page) params.set('page', String(options.page));
+  if (options.perPage) params.set('per_page', String(options.perPage));
+  if (options.search?.trim()) params.set('search', options.search.trim());
+  const query = params.toString();
+  return fetchApi(`/learning/question-bank${query ? `?${query}` : ''}`, { headers: authHeaders(token) });
+}
 export async function getPracticeQuestions(token: string, options: { categoryId?: number; difficulty?: 'easy' | 'medium' | 'exam'; limit?: number; mode?: 'adaptive' | 'all' } = {}): Promise<PracticeQuestionPool> {
   const params = new URLSearchParams();
   if (options.categoryId) params.set('category_id', String(options.categoryId));
@@ -36,58 +43,22 @@ export async function getPracticeQuestions(token: string, options: { categoryId?
   const query = params.toString();
   return fetchApi(`/learning/practice/questions${query ? `?${query}` : ''}`, { headers: authHeaders(token) });
 }
-
 export async function getPracticeQuestion(questionId: number, token: string) {
-  const data = await fetchApi(`/learning/practice/questions/${questionId}`, { headers: authHeaders(token) });
-  return data.question;
+  const data = await fetchApi(`/learning/practice/questions/${questionId}`, { headers: authHeaders(token) }); return data.question;
 }
-
 export async function submitAnswer(questionId: number, answerId: number, token: string): Promise<SubmitAnswerResult> {
   return fetchApi(`/learning/questions/${questionId}/submit`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ answer_id: answerId }) });
 }
-
 export async function completeLesson(lessonId: number | string, token: string): Promise<LessonProgress> {
-  const data = await fetchApi(`/learning/lessons/${lessonId}/complete`, { method: 'POST', headers: authHeaders(token) });
-  return data.progress;
+  const data = await fetchApi(`/learning/lessons/${lessonId}/complete`, { method: 'POST', headers: authHeaders(token) }); return data.progress;
 }
-
 export async function getLessonProgress(lessonId: number | string, token: string): Promise<LessonProgress> {
-  const data = await fetchApi(`/learning/lessons/${lessonId}/progress`, { headers: authHeaders(token) });
-  return data.progress;
+  const data = await fetchApi(`/learning/lessons/${lessonId}/progress`, { headers: authHeaders(token) }); return data.progress;
 }
-
-export async function getDashboard(token: string): Promise<DashboardSummary> {
-  return fetchApi('/learning/dashboard', { headers: authHeaders(token) });
-}
-
-export async function startExam(examId: number, token: string): Promise<ExamSession> {
-  const data = await fetchApi(`/exams/${examId}/sessions`, { method: 'POST', headers: authHeaders(token) });
-  return data.session;
-}
-
-export async function getExamSession(sessionId: number, token: string): Promise<ExamSession> {
-  const data = await fetchApi(`/exams/sessions/${sessionId}`, { headers: authHeaders(token) });
-  return data.session;
-}
-
-export async function advanceExamSection(sessionId: number, token: string): Promise<ExamSession> {
-  const data = await fetchApi(`/exams/sessions/${sessionId}/advance-section`, { method: 'POST', headers: authHeaders(token) });
-  return data.session;
-}
-
-export async function markExamQuestionViewed(sessionId: number, sessionQuestionId: number, token: string) {
-  return fetchApi(`/exams/sessions/${sessionId}/questions/${sessionQuestionId}/view`, { method: 'POST', headers: authHeaders(token) });
-}
-
-export async function submitExamAnswer(sessionId: number, sessionQuestionId: number, answerId: number, elapsedMs: number, token: string): Promise<ExamAnswerResult> {
-  const data = await fetchApi(`/exams/sessions/${sessionId}/answers`, {
-    method: 'POST', headers: authHeaders(token),
-    body: JSON.stringify({ session_question_id: sessionQuestionId, answer_id: answerId, elapsed_ms: elapsedMs }),
-  });
-  return data.answer;
-}
-
-export async function submitExam(sessionId: number, token: string): Promise<ExamResult> {
-  const data = await fetchApi(`/exams/sessions/${sessionId}/submit`, { method: 'POST', headers: authHeaders(token) });
-  return data.result;
-}
+export async function getDashboard(token: string): Promise<DashboardSummary> { return fetchApi('/learning/dashboard', { headers: authHeaders(token) }); }
+export async function startExam(examId: number, token: string): Promise<ExamSession> { const data = await fetchApi(`/exams/${examId}/sessions`, { method: 'POST', headers: authHeaders(token) }); return data.session; }
+export async function getExamSession(sessionId: number, token: string): Promise<ExamSession> { const data = await fetchApi(`/exams/sessions/${sessionId}`, { headers: authHeaders(token) }); return data.session; }
+export async function advanceExamSection(sessionId: number, token: string): Promise<ExamSession> { const data = await fetchApi(`/exams/sessions/${sessionId}/advance-section`, { method: 'POST', headers: authHeaders(token) }); return data.session; }
+export async function markExamQuestionViewed(sessionId: number, sessionQuestionId: number, token: string) { return fetchApi(`/exams/sessions/${sessionId}/questions/${sessionQuestionId}/view`, { method: 'POST', headers: authHeaders(token) }); }
+export async function submitExamAnswer(sessionId: number, sessionQuestionId: number, answerId: number, elapsedMs: number, token: string): Promise<ExamAnswerResult> { const data = await fetchApi(`/exams/sessions/${sessionId}/answers`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ session_question_id: sessionQuestionId, answer_id: answerId, elapsed_ms: elapsedMs }) }); return data.answer; }
+export async function submitExam(sessionId: number, token: string): Promise<ExamResult> { const data = await fetchApi(`/exams/sessions/${sessionId}/submit`, { method: 'POST', headers: authHeaders(token) }); return data.result; }
