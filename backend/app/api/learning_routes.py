@@ -4,6 +4,7 @@ from app.schemas.practice_schema import submit_answer_schema
 from app.services.learning_service import LearningService
 from app.services.practice_service import PracticeService
 from app.services.progress_service import ProgressService
+from app.services.teacher_knowledge_service import TeacherKnowledgeService
 from app.utils.decorators import jwt_required
 
 learning_bp = Blueprint("learning", __name__, url_prefix="/api/learning")
@@ -38,6 +39,22 @@ def get_question_bank():
             search=request.args.get("search"),
         )
     ), 200
+
+
+@learning_bp.route("/teacher/teach", methods=["POST"])
+@jwt_required
+def teacher_teach():
+    payload = request.get_json(silent=True) or {}
+    query = str(payload.get("query") or "").strip()
+    question_id = payload.get("question_id")
+    try:
+        question_id = int(question_id) if question_id is not None else None
+    except (TypeError, ValueError):
+        question_id = None
+    mode = str(payload.get("mode") or "learn")
+    if not query and question_id is None:
+        return jsonify({"error": "query or question_id is required"}), 400
+    return jsonify(TeacherKnowledgeService.teach(query, question_id=question_id, mode=mode)), 200
 
 
 @learning_bp.route("/questions/<int:question_id>/submit", methods=["POST"])
