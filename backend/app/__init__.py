@@ -1,6 +1,7 @@
 import os
 
 from flask import Flask
+from sqlalchemy import text
 
 from app.extensions import cors, db, limiter, ma, migrate
 from app.utils.error_handlers import register_error_handlers
@@ -24,7 +25,6 @@ def create_app(config_name=None):
     limiter.init_app(app)
     ma.init_app(app)
 
-    # Import every model so Flask-Migrate sees the complete metadata.
     import app.models  # noqa: F401
 
     register_error_handlers(app)
@@ -41,12 +41,21 @@ def create_app(config_name=None):
     app.register_blueprint(learning_bp)
     app.register_blueprint(practice_bp)
 
-    # Advanced exam engine and content-integrity APIs.
     from app.api.exam_registration import register_exam_blueprints
     register_exam_blueprints(app)
 
     @app.route("/health")
     def health_check():
-        return {"status": "healthy"}
+        """Liveness/readiness endpoint used by the hosting platform.
+
+        A healthy application must be able to reach its configured database;
+        otherwise returning HTTP 200 hides an outage from Render/load balancers.
+        """
+        try:
+            db.session.execute(text("SELECT 1"))
+            return {"status": "healthy", "database": "ok"}, 200
+        except Exception:
+            app.logger.exception("Health check database probe failed")
+            return {"status": "unhealthy", "database": "unavailable"}, 503
 
     return app
