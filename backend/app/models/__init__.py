@@ -21,3 +21,4 @@ from app.models.exam_event import ExamEvent  # noqa: F401
 from app.models.exam_result import ExamResult  # noqa: F401
 from app.models.exam_result_category import ExamResultCategory  # noqa: F401
 from app.models.exam_result_difficulty import ExamResultDifficulty  # noqa: F401
+from app.models.teacher_feedback import TeacherFeedback  # noqa: F401
