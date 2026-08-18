@@ -48,6 +48,10 @@ def upgrade():
     # questions.question_metadata is PostgreSQL JSON while the historical
     # snapshot column is JSONB. Cast explicitly before COALESCE so PostgreSQL
     # never has to reconcile JSON and JSONB in the same expression.
+    #
+    # The legacy questions table has no created_by column, while
+    # question_versions.created_by is nullable. Existing questions therefore
+    # receive NULL here; newly-created versions can populate the author.
     op.execute(
         sa.text(
             """
@@ -75,7 +79,7 @@ def upgrade():
                     ),
                     '[]'::jsonb
                 ),
-                q.recommended_time_seconds, q.created_by,
+                q.recommended_time_seconds, NULL,
                 COALESCE(q.created_at, NOW()), COALESCE(q.updated_at, NOW())
             FROM questions q
             WHERE NOT EXISTS (
