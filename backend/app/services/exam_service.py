@@ -4,12 +4,12 @@ from decimal import Decimal
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
-from app.models.answer import Answer
 from app.models.constants import ContentStatus
 from app.models.exam import Exam
 from app.models.exam_event import ExamEvent
 from app.models.exam_question_pool import ExamQuestionPool
 from app.models.exam_result import ExamResult
+from app.models.exam_result_category import ExamResultCategory
 from app.models.exam_section import ExamSection
 from app.models.exam_session import ExamSession
 from app.models.question import Question
@@ -20,20 +20,29 @@ from app.utils.exceptions import AppError
 
 
 ACTIVE_SESSION_STATUSES = ("CREATED", "IN_PROGRESS", "PAUSED")
+DEFAULT_TARGET_TIME_MS = 45_000
 
 
 class ExamService:
-    """Server-authoritative exam lifecycle and scoring service."""
+    """Server-authoritative exam lifecycle, section state machine and scoring."""
 
     @staticmethod
     def create_exam(admin_user_id: int, data: dict) -> Exam:
         sections = data.get("sections") or []
         if not sections:
             raise AppError("Exam must contain at least one section", status_code=422)
+
+        total_duration = sum(int(s.get("duration_seconds") or 0) for s in sections)
+        requested_duration = int(data.get("duration_seconds") or 0)
+        if total_duration <= 0 and requested_duration <= 0:
+            raise AppError("Exam must have section durations or a total duration", status_code=422)
+        if total_duration <= 0:
+            raise AppError("Each simulation section must define duration_seconds", status_code=422)
+
         exam = Exam(
             name=data["name"],
             description=data.get("description"),
-            duration_seconds=int(data["duration_seconds"]),
+            duration_seconds=total_duration,
             configuration=data.get("configuration") or {},
             created_by=admin_user_id,
             status="DRAFT",
@@ -41,21 +50,31 @@ class ExamService:
         )
         db.session.add(exam)
         db.session.flush()
+
         seen_questions = set()
         for section_index, section_data in enumerate(sections):
+            duration = int(section_data.get("duration_seconds") or 0)
+            if duration <= 0:
+                raise AppError(f"Section {section_index + 1} must have a positive duration", status_code=422)
+
             section = ExamSection(
                 exam_id=exam.id,
                 name=section_data["name"],
                 category=section_data["category"],
                 display_order=section_data.get("display_order", section_index),
-                duration_seconds=section_data.get("duration_seconds"),
+                duration_seconds=duration,
                 question_count=section_data.get("question_count"),
                 instructions=section_data.get("instructions"),
                 scoring_configuration=section_data.get("scoring_configuration") or {},
             )
             db.session.add(section)
             db.session.flush()
-            for question_index, question_id in enumerate(section_data.get("question_ids") or []):
+
+            question_ids = section_data.get("question_ids") or []
+            if section.question_count is not None and int(section.question_count) != len(question_ids):
+                raise AppError(f"Section {section.name} question_count does not match question_ids", status_code=422)
+
+            for question_index, question_id in enumerate(question_ids):
                 if question_id in seen_questions:
                     raise AppError("A question cannot appear twice in the same exam", status_code=422)
                 seen_questions.add(question_id)
@@ -79,6 +98,7 @@ class ExamService:
                         is_required=True,
                     )
                 )
+
         db.session.commit()
         return exam
 
@@ -87,16 +107,15 @@ class ExamService:
         exam = db.session.get(Exam, exam_id)
         if not exam:
             raise AppError("Exam not found", status_code=404)
-        sections = ExamSection.query.filter_by(exam_id=exam.id).all()
+        sections = ExamSection.query.filter_by(exam_id=exam.id).order_by(ExamSection.display_order).all()
         if not sections:
             raise AppError("Exam has no sections", status_code=422)
-        pool_count = (
-            ExamQuestionPool.query.join(ExamSection)
-            .filter(ExamSection.exam_id == exam.id)
-            .count()
-        )
+        if any(not s.duration_seconds or s.duration_seconds <= 0 for s in sections):
+            raise AppError("Every exam section must have a positive duration", status_code=422)
+        pool_count = ExamQuestionPool.query.join(ExamSection).filter(ExamSection.exam_id == exam.id).count()
         if pool_count == 0:
             raise AppError("Exam has no questions", status_code=422)
+        exam.duration_seconds = sum(s.duration_seconds for s in sections)
         exam.status = "PUBLISHED"
         exam.version += 1
         db.session.commit()
@@ -120,6 +139,10 @@ class ExamService:
         if existing:
             return existing
 
+        sections = ExamSection.query.filter_by(exam_id=exam.id).order_by(ExamSection.display_order).all()
+        if not sections:
+            raise AppError("Exam has no sections", status_code=422)
+
         now = datetime.now(timezone.utc)
         session = ExamSession(
             user_id=user_id,
@@ -129,6 +152,12 @@ class ExamService:
             started_at=now,
             expires_at=now + timedelta(seconds=exam.duration_seconds),
             last_activity_at=now,
+            state={
+                "current_section_index": 0,
+                "section_started_at": now.isoformat(),
+                "completed_section_indices": [],
+                "locked_before_section_index": 0,
+            },
         )
         db.session.add(session)
         db.session.flush()
@@ -174,12 +203,32 @@ class ExamService:
         return session
 
     @staticmethod
+    def advance_section(user_id: int, session_id: int) -> ExamSession:
+        session = ExamService.get_session_for_user(user_id, session_id)
+        ExamService._ensure_active(session, allow_section_advance=False)
+        sections = ExamService._sections(session.exam_id)
+        state = dict(session.state or {})
+        current_index = int(state.get("current_section_index", 0))
+        current_started = ExamService._parse_iso(state.get("section_started_at")) or session.started_at
+        current = sections[current_index]
+        now = datetime.now(timezone.utc)
+        elapsed = max(0, int((now - current_started).total_seconds() * 1000))
+        remaining = max(0, int(current.duration_seconds * 1000) - elapsed)
+
+        # Manual transition is allowed only after the section timer has expired.
+        if remaining > 0:
+            raise AppError("The current section is still active", status_code=409)
+        return ExamService._advance_expired_section(session, now=now)
+
+    @staticmethod
     def mark_question_viewed(user_id: int, session_id: int, session_question_id: int) -> SessionQuestion:
         session = ExamService.get_session_for_user(user_id, session_id)
         ExamService._ensure_active(session)
         sq = db.session.get(SessionQuestion, session_question_id)
         if not sq or sq.session_id != session.id:
             raise AppError("Session question not found", status_code=404)
+        ExamService._assert_current_section(session, sq)
+
         now = datetime.now(timezone.utc)
         if sq.first_seen_at is None:
             sq.first_seen_at = now
@@ -201,6 +250,7 @@ class ExamService:
         sq = db.session.get(SessionQuestion, session_question_id)
         if not sq or sq.session_id != session.id:
             raise AppError("Session question not found", status_code=404)
+        ExamService._assert_current_section(session, sq)
 
         snapshot = sq.answer_snapshot or []
         selected = next((item for item in snapshot if int(item.get("id")) == answer_id), None)
@@ -208,8 +258,11 @@ class ExamService:
             raise AppError("Answer is not part of this exam question", status_code=422)
 
         now = datetime.now(timezone.utc)
+        current_started = ExamService._current_section_started(session)
+        section_elapsed_ms = max(0, int((now - current_started).total_seconds() * 1000))
         response_time = max(0, int(elapsed_ms or 0))
-        response_time = min(response_time, max(0, int((session.expires_at - session.started_at).total_seconds() * 1000)))
+        response_time = min(response_time, section_elapsed_ms)
+
         previous_final = UserAnswer.query.filter_by(session_question_id=sq.id, is_final=True).first()
         if previous_final:
             previous_final.is_final = False
@@ -255,42 +308,81 @@ class ExamService:
             result = ExamResult.query.filter_by(session_id=session.id).first()
             if result:
                 return result
+
         now = datetime.now(timezone.utc)
         session.status = "EXPIRED" if expired or (session.expires_at and now >= session.expires_at) else "SUBMITTED"
         session.submitted_at = now
         session.last_activity_at = now
+
         questions = SessionQuestion.query.filter_by(session_id=session.id).all()
         total = len(questions)
         answered = correct = skipped = 0
         raw = Decimal("0")
         weighted = Decimal("0")
         total_time = 0
+        by_category = {}
+
+        section_map = {s.id: s for s in ExamService._sections(session.exam_id)}
         for sq in questions:
             final = UserAnswer.query.filter_by(session_question_id=sq.id, is_final=True).first()
             total_time += sq.total_time_ms
+            category = section_map.get(sq.section_id).category if section_map.get(sq.section_id) else "general"
+            stats = by_category.setdefault(category, {"total": 0, "answered": 0, "correct": 0, "raw": Decimal("0"), "weighted": Decimal("0"), "time": 0})
+            stats["total"] += 1
+            stats["time"] += sq.total_time_ms
+
             if final:
                 answered += 1
+                stats["answered"] += 1
                 if final.is_correct:
                     correct += 1
+                    stats["correct"] += 1
                     raw += Decimal("1")
+                    stats["raw"] += Decimal("1")
                     weighted += Decimal(str(sq.weight))
+                    stats["weighted"] += Decimal(str(sq.weight))
             else:
                 skipped += 1
                 sq.status = "SKIPPED"
+
+        normalized, category_scores = ExamService._calculate_scaled_scores(by_category, session.exam_id)
         result = ExamResult(
             session_id=session.id,
             user_id=session.user_id,
             exam_id=session.exam_id,
             raw_score=raw,
             weighted_score=weighted,
+            normalized_score=normalized,
             total_questions=total,
             answered_questions=answered,
             correct_answers=correct,
             skipped_questions=skipped,
             total_time_ms=total_time,
-            metadata_json={"expired": session.status == "EXPIRED"},
+            metadata_json={
+                "expired": session.status == "EXPIRED",
+                "scoring_version": "teil-sim-v1",
+                "category_scores": category_scores,
+            },
         )
         db.session.add(result)
+        db.session.flush()
+
+        for category, stats in by_category.items():
+            accuracy = Decimal(stats["correct"]) / Decimal(stats["total"]) if stats["total"] else Decimal("0")
+            avg_time = int(stats["time"] / stats["answered"]) if stats["answered"] else None
+            db.session.add(ExamResultCategory(
+                result_id=result.id,
+                category=category,
+                total_questions=stats["total"],
+                answered_questions=stats["answered"],
+                correct_answers=stats["correct"],
+                raw_score=stats["raw"],
+                weighted_score=stats["weighted"],
+                accuracy=accuracy,
+                total_time_ms=stats["time"],
+                average_time_ms=avg_time,
+            ))
+
         try:
             db.session.commit()
         except IntegrityError:
@@ -302,16 +394,142 @@ class ExamService:
         return result
 
     @staticmethod
-    def _ensure_active(session: ExamSession) -> None:
+    def _calculate_scaled_scores(by_category: dict, exam_id: int) -> tuple[Decimal, dict]:
+        """Simulation score, deliberately not claimed to reproduce a proprietary real-world calibration."""
+        sections = ExamService._sections(exam_id)
+        category_configs = {s.category: (s.scoring_configuration or {}) for s in sections}
+        weighted_indices = []
+        category_scores = {}
+
+        for category, stats in by_category.items():
+            total = max(1, stats["total"])
+            accuracy = float(stats["correct"] / total)
+            completion = float(stats["answered"] / total)
+            avg_ms = (stats["time"] / stats["answered"]) if stats["answered"] else DEFAULT_TARGET_TIME_MS * 1.5
+            target_ms = int(category_configs.get(category, {}).get("target_time_ms", DEFAULT_TARGET_TIME_MS))
+            speed_score = max(0.0, min(1.0, target_ms / max(target_ms, avg_ms)))
+            performance = (0.80 * accuracy) + (0.10 * completion) + (0.10 * speed_score)
+            scaled = Decimal(str(round(200 + 600 * max(0.0, min(1.0, performance)), 2)))
+            category_scores[category] = {
+                "score": float(scaled),
+                "accuracy": round(accuracy * 100, 2),
+                "completion": round(completion * 100, 2),
+                "average_time_ms": int(avg_ms) if stats["answered"] else None,
+            }
+            category_weight = float(category_configs.get(category, {}).get("score_weight", 1.0))
+            weighted_indices.append((performance, category_weight))
+
+        if not weighted_indices:
+            return Decimal("200"), category_scores
+        numerator = sum(index * weight for index, weight in weighted_indices)
+        denominator = sum(weight for _, weight in weighted_indices) or 1.0
+        overall = max(0.0, min(1.0, numerator / denominator))
+        return Decimal(str(round(200 + 600 * overall, 2))), category_scores
+
+    @staticmethod
+    def _ensure_active(session: ExamSession, allow_section_advance: bool = True) -> None:
         if session.status not in ACTIVE_SESSION_STATUSES:
             raise AppError("Exam session is not active", status_code=409)
+
         now = datetime.now(timezone.utc)
         if session.expires_at and now >= session.expires_at:
             ExamService._finalize(session, expired=True)
             raise AppError("Exam time has expired", status_code=409)
 
+        ExamService._sync_section_timer(session, now=now, persist=True)
+
+    @staticmethod
+    def _sync_section_timer(session: ExamSession, now: datetime, persist: bool = True) -> None:
+        sections = ExamService._sections(session.exam_id)
+        state = dict(session.state or {})
+        current_index = int(state.get("current_section_index", 0))
+        if current_index >= len(sections):
+            ExamService._finalize(session)
+            return
+
+        started = ExamService._parse_iso(state.get("section_started_at")) or session.started_at
+        while current_index < len(sections):
+            duration = timedelta(seconds=sections[current_index].duration_seconds or 0)
+            if now < started + duration:
+                break
+            completed = list(state.get("completed_section_indices") or [])
+            if current_index not in completed:
+                completed.append(current_index)
+            current_index += 1
+            if current_index >= len(sections):
+                session.state = {**state, "current_section_index": current_index, "completed_section_indices": completed, "locked_before_section_index": current_index}
+                if persist:
+                    ExamService._finalize(session, expired=True)
+                return
+            started = now
+            state = {
+                **state,
+                "current_section_index": current_index,
+                "section_started_at": started.isoformat(),
+                "completed_section_indices": completed,
+                "locked_before_section_index": current_index,
+            }
+
+        session.state = state
+        session.current_question_index = ExamService._first_question_index_for_section(session, current_index)
+        if persist:
+            session.last_activity_at = now
+            db.session.commit()
+
+    @staticmethod
+    def _advance_expired_section(session: ExamSession, now: datetime) -> ExamSession:
+        ExamService._sync_section_timer(session, now=now, persist=True)
+        return session
+
+    @staticmethod
+    def _assert_current_section(session: ExamSession, sq: SessionQuestion) -> None:
+        sections = ExamService._sections(session.exam_id)
+        current_index = int((session.state or {}).get("current_section_index", 0))
+        if current_index >= len(sections) or sq.section_id != sections[current_index].id:
+            raise AppError("This section is locked. Previous sections cannot be revisited.", status_code=409)
+
+    @staticmethod
+    def _current_section_started(session: ExamSession) -> datetime:
+        return ExamService._parse_iso((session.state or {}).get("section_started_at")) or session.started_at
+
+    @staticmethod
+    def _sections(exam_id: int):
+        return ExamSection.query.filter_by(exam_id=exam_id).order_by(ExamSection.display_order).all()
+
+    @staticmethod
+    def _first_question_index_for_section(session: ExamSession, section_index: int) -> int:
+        sections = ExamService._sections(session.exam_id)
+        if section_index >= len(sections):
+            return 0
+        section_id = sections[section_index].id
+        q = (
+            SessionQuestion.query.filter_by(session_id=session.id, section_id=section_id)
+            .order_by(SessionQuestion.sequence_number)
+            .first()
+        )
+        return q.sequence_number if q else 0
+
+    @staticmethod
+    def _parse_iso(value):
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(value)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            return None
+
     @staticmethod
     def serialize_session(session: ExamSession) -> dict:
+        ExamService._ensure_active(session)
+        sections = ExamService._sections(session.exam_id)
+        state = dict(session.state or {})
+        current_index = int(state.get("current_section_index", 0))
+        section_started = ExamService._current_section_started(session)
+        current_section_expires = None
+        if current_index < len(sections):
+            current_section_expires = section_started + timedelta(seconds=sections[current_index].duration_seconds)
+
         questions = SessionQuestion.query.filter_by(session_id=session.id).order_by(SessionQuestion.sequence_number).all()
         serialized_questions = []
         for q in questions:
@@ -334,6 +552,7 @@ class ExamService:
                     for item in (q.answer_snapshot or [])
                 ],
             })
+
         return {
             "id": session.id,
             "exam_id": session.exam_id,
@@ -341,5 +560,25 @@ class ExamService:
             "started_at": session.started_at.isoformat() if session.started_at else None,
             "expires_at": session.expires_at.isoformat() if session.expires_at else None,
             "current_question_index": session.current_question_index,
+            "current_section_index": current_index,
+            "section_started_at": section_started.isoformat() if section_started else None,
+            "current_section_expires_at": current_section_expires.isoformat() if current_section_expires else None,
+            "locked_before_section_index": int(state.get("locked_before_section_index", current_index)),
+            "completed_section_indices": list(state.get("completed_section_indices") or []),
+            "sections": [
+                {
+                    "id": s.id,
+                    "name": s.name,
+                    "category": s.category,
+                    "display_order": s.display_order,
+                    "duration_seconds": s.duration_seconds,
+                    "question_count": s.question_count,
+                    "instructions": s.instructions,
+                    "scoring_configuration": s.scoring_configuration or {},
+                    "locked": i < current_index,
+                    "active": i == current_index,
+                }
+                for i, s in enumerate(sections)
+            ],
             "questions": serialized_questions,
         }
