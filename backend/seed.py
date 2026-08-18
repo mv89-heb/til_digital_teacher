@@ -27,6 +27,7 @@ from app.models.lesson_content import LessonContent
 from app.models.question import Question
 from app.models.user import User
 from app.utils.slugify import slugify
+from lesson_catalog import seed_curriculum
 from question_bank import build_question_bank
 
 ADMIN_EMAIL = "admin@til-teacher.local"
@@ -66,7 +67,7 @@ def _seed_question_bank(category: Category, lesson: Lesson) -> int:
 
 
 def seed_demo_data() -> dict:
-    """Create the admin, published quantitative category, demo lesson and bank."""
+    """Create the admin, core quantitative lesson, question bank and expanded curriculum."""
     admin = User.query.filter_by(email=ADMIN_EMAIL).first()
     if not admin:
         admin = User(
@@ -114,57 +115,36 @@ def seed_demo_data() -> dict:
         db.session.flush()
 
         blocks = [
-            (
-                LessonSection.SIMPLE_EXPLANATION,
-                """
+            (LessonSection.SIMPLE_EXPLANATION, """
 סדרת מספרים היא רשימת מספרים שפועלת לפי חוק מסוים.
 התחילו בבדיקת ההפרש בין שני איברים סמוכים, ואז ודאו שהחוק ממשיך גם בזוג הבא.
-""",
-            ),
-            (
-                LessonSection.NORMAL_EXPLANATION,
-                """
+"""),
+            (LessonSection.NORMAL_EXPLANATION, """
 הסוגים הנפוצים הם סדרה חשבונית עם הפרש קבוע, סדרה הנדסית עם יחס קבוע,
 סדרה שבה ההפרשים עצמם משתנים לפי חוק, וסדרה מתחלפת שבה יש שני תת-רצפים.
-""",
-            ),
-            (
-                LessonSection.SOLVED_EXAMPLE,
-                """
+"""),
+            (LessonSection.SOLVED_EXAMPLE, """
 3, 7, 11, 15, ?
 
 ההפרש הוא 4 בכל פעם, ולכן האיבר הבא הוא 19.
-""",
-            ),
-            (
-                LessonSection.NORMAL_METHOD,
-                """
+"""),
+            (LessonSection.NORMAL_METHOD, """
 1. בדקו הפרשים.
 2. אם הם אינם קבועים, בדקו יחס.
 3. אם גם היחס אינו קבוע, בדקו את סדרת ההפרשים או שני תת-רצפים.
-""",
-            ),
-            (
-                LessonSection.FAST_METHOD,
-                """
+"""),
+            (LessonSection.FAST_METHOD, """
 בתרגול מתוזמן אפשר לחשב הפרש ראשון, לבדוק את האפשרויות ולוודא עם איבר נוסף
 רק אם התשובה אינה חד-משמעית.
-""",
-            ),
-            (
-                LessonSection.COMMON_MISTAKES,
-                """
+"""),
+            (LessonSection.COMMON_MISTAKES, """
 אל תניחו שהחוק ממשיך רק משום שהוא מתאים לשני האיברים הראשונים.
 בדקו לפחות זוג נוסף, והיזהרו מסימנים של סדרה מתחלפת.
-""",
-            ),
-            (
-                LessonSection.SUMMARY,
-                """
+"""),
+            (LessonSection.SUMMARY, """
 זכרו: הפרש → יחס → הפרשי-הפרשים → תת-רצפים.
 המטרה היא לזהות את החוק במהירות ובדיוק.
-""",
-            ),
+"""),
         ]
 
         for order, (section, body) in enumerate(blocks, start=1):
@@ -260,21 +240,24 @@ def seed_demo_data() -> dict:
 
     bank_added = _seed_question_bank(category, lesson)
     db.session.commit()
+    curriculum = seed_curriculum()
 
     total_questions = Question.query.filter_by(status=ContentStatus.PUBLISHED).count()
+    total_lessons = Lesson.query.filter_by(status=ContentStatus.PUBLISHED).count()
+    total_categories = Category.query.filter_by(status=ContentStatus.PUBLISHED).count()
     return {
         "admin_email": ADMIN_EMAIL,
         "category_id": category.id,
         "lesson_id": lesson.id,
         "bank_added": bank_added,
         "published_questions": total_questions,
+        "published_lessons": total_lessons,
+        "published_categories": total_categories,
+        "curriculum": curriculum,
     }
 
 
 if __name__ == "__main__":
-    # Render executes seed.py before Gunicorn. Use the real DATABASE_URL
-    # supplied by Render/Neon, but do not require a production JWT secret for
-    # this non-serving migration/seed process.
     app = create_app("development")
     with app.app_context():
         print("Running database migrations...")
