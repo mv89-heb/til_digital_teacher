@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
@@ -108,7 +109,7 @@ class ProgressService:
             }
         except SQLAlchemyError:
             db.session.rollback()
-            db.session.bind.logger.warning(
+            current_app.logger.warning(
                 "Dashboard progress rollups are unavailable; using empty progress data",
                 exc_info=True,
             )
@@ -165,7 +166,7 @@ class ProgressService:
         except SQLAlchemyError:
             db.session.rollback()
             lesson_progress_rows = []
-            db.session.bind.logger.warning(
+            current_app.logger.warning(
                 "Dashboard lesson progress is unavailable; using empty learning history",
                 exc_info=True,
             )
