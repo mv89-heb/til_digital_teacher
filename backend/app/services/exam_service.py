@@ -288,7 +288,7 @@ class ExamService:
             correct_answers=correct,
             skipped_questions=skipped,
             total_time_ms=total_time,
-            metadata={"expired": session.status == "EXPIRED"},
+            metadata_json={"expired": session.status == "EXPIRED"},
         )
         db.session.add(result)
         try:
