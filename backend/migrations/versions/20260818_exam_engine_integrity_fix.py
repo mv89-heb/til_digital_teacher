@@ -1,4 +1,4 @@
-"""Complete exam-engine schema integrity and historical snapshots.
+"""Fix exam-engine migration parity and historical snapshots.
 
 Revision ID: 20260818_exam_engine_integrity_fix
 Revises: 20260818_exam_engine_hardening
@@ -14,39 +14,22 @@ depends_on = None
 
 
 def upgrade():
-    # TimestampMixin parity: these models inherit created_at/updated_at.
-    for table in (
+    # The hardening migration already creates updated_at on every exam table
+    # except question_versions. Add it only where it is actually missing.
+    op.add_column(
         "question_versions",
-        "exams",
-        "exam_sections",
-        "exam_question_pool",
-        "exam_sessions",
-        "session_questions",
-        "user_answers",
-        "exam_results",
-    ):
-        op.add_column(
-            table,
-            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
-        )
-        op.execute(
-            sa.text(f"UPDATE {table} SET updated_at = created_at WHERE updated_at IS NULL")
-        )
-        op.alter_column(table, "updated_at", nullable=False, server_default=sa.func.now())
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+    )
+    op.execute(sa.text("UPDATE question_versions SET updated_at = created_at WHERE updated_at IS NULL"))
+    op.alter_column("question_versions", "updated_at", nullable=False, server_default=sa.func.now())
 
     # Freeze answer correctness/content together with each question version.
     op.add_column(
         "question_versions",
-        sa.Column(
-            "answer_snapshot",
-            postgresql.JSONB(),
-            nullable=False,
-            server_default=sa.text("'[]'::jsonb"),
-        ),
+        sa.Column("answer_snapshot", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
     )
 
-    # Backfill one immutable version for every existing question. This makes
-    # the new exam engine usable without rewriting the existing content bank.
+    # Backfill one immutable version for every existing question.
     op.execute(
         sa.text(
             """
@@ -56,14 +39,8 @@ def upgrade():
                  answer_snapshot, recommended_time_seconds, created_by,
                  created_at, updated_at)
             SELECT
-                q.id,
-                1,
-                q.category_id,
-                q.question_type,
-                q.difficulty,
-                q.status,
-                q.body,
-                q.solution_text,
+                q.id, 1, q.category_id, q.question_type, q.difficulty, q.status,
+                q.body, q.solution_text,
                 COALESCE(q.question_metadata, '{}'::jsonb),
                 COALESCE(
                     (
@@ -76,15 +53,12 @@ def upgrade():
                                 'order', a."order"
                             ) ORDER BY a."order", a.id
                         )
-                        FROM answers a
-                        WHERE a.question_id = q.id
+                        FROM answers a WHERE a.question_id = q.id
                     ),
                     '[]'::jsonb
                 ),
-                q.recommended_time_seconds,
-                q.created_by,
-                COALESCE(q.created_at, NOW()),
-                COALESCE(q.updated_at, NOW())
+                q.recommended_time_seconds, q.created_by,
+                COALESCE(q.created_at, NOW()), COALESCE(q.updated_at, NOW())
             FROM questions q
             WHERE NOT EXISTS (
                 SELECT 1 FROM question_versions v WHERE v.question_id = q.id
@@ -93,15 +67,10 @@ def upgrade():
         )
     )
 
-    # Session questions must preserve the exact answer set used at exam time.
+    # Preserve the exact answer set used by every session question.
     op.add_column(
         "session_questions",
-        sa.Column(
-            "answer_snapshot",
-            postgresql.JSONB(),
-            nullable=False,
-            server_default=sa.text("'[]'::jsonb"),
-        ),
+        sa.Column("answer_snapshot", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
     )
     op.execute(
         sa.text(
@@ -125,15 +94,4 @@ def downgrade():
     op.execute("DROP INDEX IF EXISTS uq_user_answers_one_final")
     op.drop_column("session_questions", "answer_snapshot")
     op.drop_column("question_versions", "answer_snapshot")
-
-    for table in (
-        "exam_results",
-        "user_answers",
-        "session_questions",
-        "exam_sessions",
-        "exam_question_pool",
-        "exam_sections",
-        "exams",
-        "question_versions",
-    ):
-        op.drop_column(table, "updated_at")
+    op.drop_column("question_versions", "updated_at")
