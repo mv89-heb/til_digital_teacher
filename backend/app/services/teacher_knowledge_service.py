@@ -131,19 +131,33 @@ class TeacherKnowledgeService:
         tokens = cls._tokens(query)
         topic = cls.resolve_topic(query)
 
+        # Category has no slug column in the current schema; expose a stable
+        # slug-like value derived from the name instead of querying a missing field.
         categories = [
-            {"id": row.id, "name": row.name, "slug": row.slug, "parent_id": row.parent_id}
-            for row in Category.query.order_by(Category.parent_id.asc(), Category.id.asc()).all()
+            {
+                "id": row.id,
+                "name": row.name,
+                "slug": cls._normalize(row.name).replace(" ", "-"),
+                "parent_id": row.parent_id,
+            }
+            for row in Category.query.order_by(Category.parent_id.asc(), Category.order.asc(), Category.id.asc()).all()
         ]
 
         lessons = []
         lesson_query = Lesson.query.filter(Lesson.status == ContentStatus.PUBLISHED)
         if topic:
             topic_tokens = cls._tokens(topic)
-            for token in topic_tokens[:3]:
-                lesson_query = lesson_query.filter(Lesson.title.ilike(f"%{token}%"))
-        for lesson in lesson_query.order_by(Lesson.category_id.asc(), Lesson.order_index.asc(), Lesson.id.asc()).limit(30).all():
-            lessons.append({"id": lesson.id, "title": lesson.title, "category_id": lesson.category_id, "slug": lesson.slug})
+            if topic_tokens:
+                lesson_query = lesson_query.filter(
+                    or_(*[Lesson.title.ilike(f"%{token}%") for token in topic_tokens[:3]])
+                )
+        for lesson in lesson_query.order_by(Lesson.category_id.asc(), Lesson.order.asc(), Lesson.id.asc()).limit(30).all():
+            lessons.append({
+                "id": lesson.id,
+                "title": lesson.title,
+                "category_id": lesson.category_id,
+                "slug": lesson.slug,
+            })
 
         question_query = Question.query.filter(Question.status == ContentStatus.PUBLISHED)
         if question_id is not None:
@@ -155,8 +169,7 @@ class TeacherKnowledgeService:
             for token in tokens[:10]:
                 pattern = f"%{token}%"
                 conditions.extend([body_text.ilike(pattern), metadata_text.ilike(pattern)])
-            question_query = question_query.filter(or_(*conditions))
-            question_query = question_query.order_by(Question.id.asc())
+            question_query = question_query.filter(or_(*conditions)).order_by(Question.id.asc())
         else:
             question_query = question_query.order_by(func.random())
 
