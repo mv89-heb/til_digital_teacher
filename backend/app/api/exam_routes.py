@@ -1,11 +1,45 @@
 from flask import Blueprint, g, jsonify, request
 
+from app.models.exam import Exam
 from app.models.exam_result_category import ExamResultCategory
+from app.models.exam_section import ExamSection
+from app.models.exam_question_pool import ExamQuestionPool
 from app.services.exam_answer_service import ExamAnswerService
 from app.services.exam_service import ExamService
 from app.utils.decorators import jwt_required
 
 exam_bp = Blueprint("exam", __name__, url_prefix="/api/exams")
+
+
+@exam_bp.route("", methods=["GET"])
+@jwt_required
+def list_exams():
+    """Return published simulations available to the learner."""
+    exams = Exam.query.filter_by(status="PUBLISHED").order_by(Exam.created_at.desc(), Exam.id.desc()).all()
+    payload = []
+    for exam in exams:
+        sections = ExamSection.query.filter_by(exam_id=exam.id).order_by(ExamSection.display_order).all()
+        payload.append({
+            "id": exam.id,
+            "name": exam.name,
+            "description": exam.description,
+            "duration_seconds": exam.duration_seconds,
+            "section_count": len(sections),
+            "question_count": sum(
+                ExamQuestionPool.query.filter_by(exam_section_id=section.id).count()
+                for section in sections
+            ),
+            "sections": [
+                {
+                    "name": section.name,
+                    "category": section.category,
+                    "duration_seconds": section.duration_seconds,
+                    "question_count": ExamQuestionPool.query.filter_by(exam_section_id=section.id).count(),
+                }
+                for section in sections
+            ],
+        })
+    return jsonify({"exams": payload}), 200
 
 
 @exam_bp.route("/<int:exam_id>/sessions", methods=["POST"])
@@ -53,8 +87,6 @@ def submit_answer(session_id):
     except (KeyError, TypeError, ValueError):
         return jsonify({"error": "session_question_id and answer_id are required integers"}), 400
 
-    # elapsed_ms is intentionally ignored by the server for authoritative scoring.
-    # ExamAnswerService / ExamService derive timing from server-side events.
     answer = ExamAnswerService.submit(
         g.current_user["id"],
         session_id,
