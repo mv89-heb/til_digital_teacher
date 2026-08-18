@@ -51,6 +51,25 @@ export async function getTeacherLesson(query: string, token: string, options: { 
     body: JSON.stringify({ query, mode: options.mode || 'learn', question_id: options.questionId ?? null }),
   });
 }
+export async function submitTeacherFeedback(token: string, payload: {
+  student_query: string;
+  feedback: string;
+  correction: string;
+  original_answer?: string;
+  correct_answer?: string;
+  question_id?: number | null;
+  topic?: string | null;
+  subcategory?: string | null;
+  skill?: string | null;
+  error_type?: string | null;
+  severity?: 'low' | 'medium' | 'high';
+}) {
+  return fetchApi('/learning/teacher/feedback', {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+}
 export async function getPracticeQuestions(token: string, options: { categoryId?: number; difficulty?: 'easy' | 'medium' | 'exam'; limit?: number; mode?: 'adaptive' | 'all' } = {}): Promise<PracticeQuestionPool> {
   const params = new URLSearchParams();
   if (options.categoryId) params.set('category_id', String(options.categoryId));
