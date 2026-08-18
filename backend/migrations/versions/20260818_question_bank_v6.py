@@ -12,9 +12,15 @@ branch_labels = None
 depends_on = None
 
 
-def _snapshot_sql():
-    return """
-        COALESCE((
+def upgrade():
+    conn = op.get_bind()
+
+    # v5 rebuilt answers but accidentally omitted answer ids from the
+    # immutable version snapshot. ExamService uses those ids when validating
+    # submissions, so every latest version must contain them.
+    conn.execute(sa.text("""
+        UPDATE question_versions v
+        SET answer_snapshot = COALESCE((
             SELECT jsonb_agg(
                 jsonb_build_object(
                     'id', a.id,
@@ -25,34 +31,35 @@ def _snapshot_sql():
                 ) ORDER BY a."order", a.id
             )
             FROM answers a
-            WHERE a.question_id = :qid
+            WHERE a.question_id = v.question_id
         ), '[]'::jsonb)
-    """
-
-
-def upgrade():
-    conn = op.get_bind()
-
-    # v5 rebuilt answers but accidentally omitted answer ids from the
-    # immutable version snapshot. ExamService uses those ids when validating
-    # submissions, so every latest version must contain them.
-    conn.execute(sa.text(f"""
-        UPDATE question_versions v
-        SET answer_snapshot = {_snapshot_sql()}
         WHERE v.version_number = (
             SELECT MAX(v2.version_number)
             FROM question_versions v2
             WHERE v2.question_id = v.question_id
         )
-    """), {"qid": None})
+    """))
 
-    # Repair any already-created session snapshots as well. This makes the
-    # migration safe even if an exam session was created before v6 deployed.
-    conn.execute(sa.text(f"""
+    # Repair any already-created session snapshots as well. This is safe for
+    # sessions that have not yet received an answer and makes the migration
+    # resilient if a session was created immediately before v6 deployed.
+    conn.execute(sa.text("""
         UPDATE session_questions sq
-        SET answer_snapshot = {_snapshot_sql()}
+        SET answer_snapshot = COALESCE((
+            SELECT jsonb_agg(
+                jsonb_build_object(
+                    'id', a.id,
+                    'answer_text', a.answer_text,
+                    'is_correct', a.is_correct,
+                    'explanation_if_selected', a.explanation_if_selected,
+                    'order', a."order"
+                ) ORDER BY a."order", a.id
+            )
+            FROM answers a
+            WHERE a.question_id = sq.question_id
+        ), '[]'::jsonb)
         WHERE sq.question_id IS NOT NULL
-    """), {"qid": None})
+    """))
 
     # The renderer expects visual_data while the seed stored visual.
     conn.execute(sa.text("""
