@@ -17,9 +17,24 @@ def create_app(config_name=None):
 
     db.init_app(flask_app)
     migrate.init_app(flask_app, db)
+
+    # Flask-CORS treats a string as one origin. Production configuration may
+    # contain a comma-separated list, so normalize it to a real list before
+    # passing it to Flask-CORS. Without this, browser POST/preflight requests
+    # such as login can fail even though GET requests appear to work.
+    configured_origins = flask_app.config.get("CORS_ORIGINS", "")
+    if isinstance(configured_origins, str):
+        allowed_origins = [
+            origin.strip()
+            for origin in configured_origins.split(",")
+            if origin.strip()
+        ]
+    else:
+        allowed_origins = list(configured_origins or [])
+
     cors.init_app(
         flask_app,
-        resources={r"/api/*": {"origins": flask_app.config["CORS_ORIGINS"]}},
+        resources={r"/api/*": {"origins": allowed_origins}},
         supports_credentials=False,
     )
     limiter.init_app(flask_app)
