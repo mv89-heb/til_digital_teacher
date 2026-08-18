@@ -1,13 +1,13 @@
 """Fix exam-engine migration parity and historical snapshots.
 
-Revision ID: 20260818_exam_engine_integrity_fix
+Revision ID: 20260818_exam_integrity_fix
 Revises: 20260818_exam_engine_hardening
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "20260818_exam_engine_integrity_fix"
+revision = "20260818_exam_integrity_fix"
 down_revision = "20260818_exam_engine_hardening"
 branch_labels = None
 depends_on = None
