@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, BookOpen, Bot, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Brain, Bot, Settings, LogOut } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 
 export default function Sidebar() {
@@ -18,6 +18,7 @@ export default function Sidebar() {
   const navItems = [
     { name: 'לוח בקרה', href: '/dashboard', icon: LayoutDashboard },
     { name: 'מרכז למידה', href: '/learn', icon: BookOpen },
+    { name: 'מאגר שאלות', href: '/practice', icon: Brain },
     { name: 'מורה AI', href: '/ai-teacher', icon: Bot },
     { name: 'הגדרות', href: '/settings', icon: Settings },
   ];
@@ -34,14 +35,13 @@ export default function Sidebar() {
         {navItems.map((item) => {
           const isActive = pathname.startsWith(item.href);
           const Icon = item.icon;
-          
           return (
             <Link
               key={item.href}
               href={item.href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all font-medium ${
-                isActive 
-                  ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-100' 
+                isActive
+                  ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-100'
                   : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
@@ -53,7 +53,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-slate-200">
-        <button 
+        <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2.5 w-full rounded-xl text-slate-600 hover:bg-red-50 hover:text-red-600 transition-all font-medium"
         >
