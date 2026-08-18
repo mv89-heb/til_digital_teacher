@@ -52,11 +52,22 @@ export interface Question {
   visual_data?: Record<string, unknown> | string | null;
 }
 
+export interface PracticeTarget {
+  skill: string | null;
+  reason: string;
+  accuracy_percent: number | null;
+}
+
 export interface PracticeQuestionPool {
   questions: Question[];
   count: number;
   mode: 'adaptive' | 'all';
-  target_difficulty: 'easy' | 'medium' | 'exam' | null;
+  target_difficulty?: 'easy' | 'medium' | 'exam' | null;
+  target?: PracticeTarget;
+  profile?: {
+    attempts_considered: number;
+    weakest_skill: { skill: string; accuracy_percent: number; attempted: number; correct: number } | null;
+  };
 }
 
 export interface QuestionBankPage {
