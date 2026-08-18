@@ -6,7 +6,7 @@ from app.core.security_policy import require_production_secret
 class Config:
     """Base configuration shared by all environments."""
 
-    SECRET_KEY = os.getenv("JWT_SECRET") or "development-only-secret-change-me"
+    SECRET_KEY = os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY") or "development-only-secret-change-me"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URL", "postgresql://user:password@localhost/til_db"
@@ -32,7 +32,12 @@ class TestingConfig(Config):
 
 class ProductionConfig(Config):
     DEBUG = False
-    SECRET_KEY = require_production_secret(os.getenv("JWT_SECRET"), "JWT_SECRET")
+    # Keep JWT_SECRET as the documented/preferred name, while accepting
+    # SECRET_KEY for backwards compatibility with an existing Render service.
+    SECRET_KEY = require_production_secret(
+        os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY"),
+        "JWT_SECRET (or SECRET_KEY)",
+    )
     CORS_ORIGINS = os.getenv("CORS_ORIGINS", "")
 
 
