@@ -1,7 +1,7 @@
 """Expand learning center: English and exam strategy curriculum.
 
 Revision ID: 20260818_lc_v14
-Revises: 20260818_lc_v13
+Revises: 20260818_learning_center_v13
 
 Idempotent content migration: inserts only when the lesson slug does not already exist.
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy import text
 
 revision = "20260818_lc_v14"
-down_revision = "20260818_lc_v13"
+down_revision = "20260818_learning_center_v13"
 branch_labels = None
 depends_on = None
 
