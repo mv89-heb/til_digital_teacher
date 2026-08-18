@@ -8,6 +8,30 @@ from app.utils.decorators import jwt_required
 practice_bp = Blueprint("practice", __name__, url_prefix="/api/learning")
 
 
+@practice_bp.route("/practice/questions", methods=["GET"])
+@jwt_required
+def list_practice_questions():
+    limit = request.args.get("limit", default=10, type=int)
+    category_id = request.args.get("category_id", type=int)
+    difficulty = request.args.get("difficulty")
+    mode = request.args.get("mode", default="adaptive")
+
+    result = PracticeService.list_practice_questions(
+        user_id=g.current_user["id"],
+        category_id=category_id,
+        difficulty=difficulty,
+        limit=limit,
+        mode=mode,
+    )
+    return jsonify(result), 200
+
+
+@practice_bp.route("/practice/questions/<int:question_id>", methods=["GET"])
+@jwt_required
+def get_practice_question(question_id):
+    return jsonify({"question": PracticeService.get_practice_question(question_id)}), 200
+
+
 @practice_bp.route("/questions/<int:question_id>/submit", methods=["POST"])
 @jwt_required
 def submit_answer(question_id):
