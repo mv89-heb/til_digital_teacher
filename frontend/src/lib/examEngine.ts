@@ -30,6 +30,12 @@ export const initialExamState: ExamClientState = {
   serverNowOffsetMs: 0,
 };
 
+function calculateServerOffset(session: ExamSession, clientNowMs: number): number {
+  if (!session.started_at) return 0;
+  const serverStartedMs = Date.parse(session.started_at);
+  return Number.isFinite(serverStartedMs) ? serverStartedMs - clientNowMs : 0;
+}
+
 export function hydrateExam(session: ExamSession, clientNowMs = Date.now()): ExamClientState {
   const firstQuestion = firstQuestionForSection(session, session.current_section_index);
   return {
@@ -37,7 +43,7 @@ export function hydrateExam(session: ExamSession, clientNowMs = Date.now()): Exa
     phase: session.status === 'SUBMITTED' || session.status === 'EXPIRED' ? 'FINISHED' : 'RUNNING',
     currentSectionIndex: session.current_section_index,
     currentQuestionIndex: firstQuestion?.sequence_number ?? session.current_question_index,
-    serverNowOffsetMs: 0,
+    serverNowOffsetMs: calculateServerOffset(session, clientNowMs),
   };
 }
 
@@ -103,9 +109,14 @@ export function questionsForSection(session: ExamSession, sectionIndex: number):
     .sort((a, b) => a.sequence_number - b.sequence_number);
 }
 
-export function remainingSectionMs(session: ExamSession, clientNowMs = Date.now()): number {
+export function remainingSectionMs(
+  session: ExamSession,
+  clientNowMs = Date.now(),
+  serverNowOffsetMs = 0,
+): number {
   if (!session.current_section_expires_at) return 0;
-  return Math.max(0, Date.parse(session.current_section_expires_at) - clientNowMs);
+  const estimatedServerNowMs = clientNowMs + serverNowOffsetMs;
+  return Math.max(0, Date.parse(session.current_section_expires_at) - estimatedServerNowMs);
 }
 
 function firstQuestionForSection(session: ExamSession, sectionIndex: number): ExamQuestion | undefined {
