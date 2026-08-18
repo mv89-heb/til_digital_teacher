@@ -6,7 +6,6 @@ from typing import Any
 
 from sqlalchemy import String, cast, func, or_
 
-from app.extensions import db
 from app.models.category import Category
 from app.models.constants import ContentStatus
 from app.models.lesson import Lesson
@@ -108,14 +107,14 @@ class TeacherKnowledgeService:
     def _question_payload(question: Question) -> dict:
         metadata = question.question_metadata or {}
         answers = [
-            {"id": answer.id, "text": answer.answer_text, "is_correct": answer.is_correct}
+            {"id": answer.id, "text": answer.answer_text}
             for answer in sorted(question.answers, key=lambda answer: answer.order)
         ]
         return {
             "id": question.id,
             "bank_key": metadata.get("bank_key"),
             "body": TeacherKnowledgeService._clean(question.body),
-            "solution_text": TeacherKnowledgeService._clean(question.solution_text),
+            "solution_text": None,
             "main_category": metadata.get("main_category"),
             "subcategory": metadata.get("subcategory"),
             "skill": metadata.get("skill"),
@@ -131,8 +130,6 @@ class TeacherKnowledgeService:
         tokens = cls._tokens(query)
         topic = cls.resolve_topic(query)
 
-        # Category has no slug column in the current schema; expose a stable
-        # slug-like value derived from the name instead of querying a missing field.
         categories = [
             {
                 "id": row.id,
