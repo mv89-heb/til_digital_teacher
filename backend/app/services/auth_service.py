@@ -33,13 +33,18 @@ class AuthService:
     def login_user(email: str, password: str) -> dict:
         normalized_email = email.strip().lower()
         user = User.query.filter(db.func.lower(User.email) == normalized_email).first()
-        if not user or not check_password_hash(user.password_hash, password):
+
+        if not user:
             raise AppError("Invalid email or password", status_code=401)
 
-        # The current users table does not have an is_active column. Treat
-        # existing users as active until an explicit account-status field is
-        # introduced through a migration. Using getattr also keeps login
-        # compatible with older database schemas during staged deployments.
+        try:
+            password_valid = check_password_hash(user.password_hash, password)
+        except (TypeError, ValueError):
+            password_valid = False
+
+        if not password_valid:
+            raise AppError("Invalid email or password", status_code=401)
+
         if getattr(user, "is_active", True) is False:
             raise AppError("Account is inactive", status_code=403)
 
@@ -49,14 +54,23 @@ class AuthService:
             "iat": now,
             "exp": now + timedelta(days=AuthService.JWT_EXPIRES_DAYS),
         }
-        token = jwt.encode(payload, AuthService.SECRET_KEY, algorithm="HS256")
 
-        user.last_login_at = now
         try:
-            db.session.commit()
+            token = jwt.encode(payload, AuthService.SECRET_KEY, algorithm="HS256")
+        except Exception as exc:
+            db.session.rollback()
+            raise AppError("Authentication configuration error", status_code=500) from exc
+
+        # Authentication must not fail merely because recording the optional
+        # last-login timestamp fails. The token is already valid at this point.
+        # This also makes staged deployments tolerant of an older database
+        # schema while migrations propagate.
+        try:
+            if hasattr(user, "last_login_at"):
+                user.last_login_at = now
+                db.session.commit()
         except Exception:
             db.session.rollback()
-            raise
 
         return {"user": user.to_dict(), "token": token}
 
