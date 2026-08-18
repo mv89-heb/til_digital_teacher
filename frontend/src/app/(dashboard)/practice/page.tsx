@@ -37,6 +37,7 @@ export default function PracticePage() {
   });
 
   const selectedDifficulty = questionsQuery.data?.target_difficulty;
+  const target = questionsQuery.data?.target;
   const accuracy = dashboardQuery.data?.stats.overall_accuracy_percent ?? 0;
   const attempted = dashboardQuery.data?.stats.total_questions_attempted ?? 0;
 
@@ -69,7 +70,7 @@ export default function PracticePage() {
           <label className="text-sm text-slate-600"><span className="block mb-1 font-medium">רמת קושי</span><select value={difficulty} onChange={(e) => setDifficulty(e.target.value as Difficulty)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-800">{(Object.keys(difficultyLabels) as Difficulty[]).map((key) => <option key={key} value={key}>{difficultyLabels[key]}</option>)}</select></label>
           <label className="text-sm text-slate-600"><span className="block mb-1 font-medium">אסטרטגיית בחירה</span><select value={mode} onChange={(e) => setMode(e.target.value as 'all' | 'adaptive')} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-800"><option value="adaptive">אדפטיבי — התאמה לרמה</option><option value="all">חופשי — כל השאלות</option></select></label>
         </div>
-        {mode === 'adaptive' && selectedDifficulty && <div className="mt-4 flex items-center gap-2 text-sm text-indigo-700 bg-indigo-50 rounded-xl px-3 py-2"><Sparkles className="w-4 h-4" /> רמת היעד שנבחרה: <strong>{difficultyLabels[selectedDifficulty]}</strong></div>}
+        {mode === 'adaptive' && (selectedDifficulty || target) && <div className="mt-4 rounded-xl bg-indigo-50 px-3 py-3 text-sm text-indigo-800 space-y-1"><div className="flex items-center gap-2"><Sparkles className="w-4 h-4" />{selectedDifficulty && <>רמת היעד שנבחרה: <strong>{difficultyLabels[selectedDifficulty]}</strong></>}</div>{target?.skill && <div><strong>מוקד האימון:</strong> {target.skill} · {target.reason}{target.accuracy_percent !== null ? ` · דיוק קודם: ${target.accuracy_percent}%` : ''}</div>}</div>}
       </Card>
 
       {questionsQuery.isLoading && <div className="space-y-5"><Skeleton className="h-72 w-full" /><Skeleton className="h-72 w-full" /></div>}
