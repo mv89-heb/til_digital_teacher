@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, PartyPopper, Zap, CheckCircle2, List, ArrowRight, ArrowLeft, Clock3 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PartyPopper, Zap, CheckCircle2, List, ArrowRight, ArrowLeft, Clock3, Target, BookOpenCheck } from 'lucide-react';
 import { completeLesson, fetchApi, getLesson, getLessonProgress } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useToast } from '@/lib/useToast';
@@ -19,6 +19,17 @@ import { ToastContainer } from '@/components/ui/ToastContainer';
 
 const STORAGE_PREFIX = 'til-lesson-position:';
 
+const SECTION_LABEL: Record<string, string> = {
+  simple_explanation: 'הסבר פשוט',
+  normal_explanation: 'הסבר מעמיק',
+  solved_example: 'דוגמה פתורה',
+  normal_method: 'שיטת פתרון',
+  fast_method: 'שיטה מהירה',
+  common_mistakes: 'טעויות נפוצות',
+  guided_practice: 'תרגול מודרך',
+  summary: 'סיכום',
+};
+
 export default function LessonPage() {
   const params = useParams();
   const router = useRouter();
@@ -29,19 +40,43 @@ export default function LessonPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showOutline, setShowOutline] = useState(false);
 
-  const { data: lesson, isLoading, isError } = useQuery({ queryKey: ['lesson', lessonId], queryFn: () => getLesson(lessonId) });
-  const { data: progress } = useQuery({ queryKey: ['lesson-progress', lessonId], queryFn: () => getLessonProgress(lessonId, token as string), enabled: !!token });
+  const { data: lesson, isLoading, isError } = useQuery({
+    queryKey: ['lesson', lessonId],
+    queryFn: () => getLesson(lessonId),
+  });
+  const { data: progress } = useQuery({
+    queryKey: ['lesson-progress', lessonId],
+    queryFn: () => getLessonProgress(lessonId, token as string),
+    enabled: !!token,
+  });
 
   useEffect(() => {
     if (!lesson || typeof window === 'undefined') return;
-    if (progress?.completed) { window.localStorage.removeItem(`${STORAGE_PREFIX}${lessonId}`); return; }
+    if (progress?.completed) {
+      window.localStorage.removeItem(`${STORAGE_PREFIX}${lessonId}`);
+      return;
+    }
     const saved = Number(window.localStorage.getItem(`${STORAGE_PREFIX}${lessonId}`));
-    if (Number.isInteger(saved) && saved >= 0 && saved < lesson.content_blocks.length) setCurrentIndex(saved);
+    if (Number.isInteger(saved) && saved >= 0 && saved < lesson.content_blocks.length) {
+      setCurrentIndex(saved);
+    }
   }, [lesson, lessonId, progress?.completed]);
 
   useEffect(() => {
-    if (lesson && typeof window !== 'undefined') window.localStorage.setItem(`${STORAGE_PREFIX}${lessonId}`, String(currentIndex));
+    if (lesson && typeof window !== 'undefined') {
+      window.localStorage.setItem(`${STORAGE_PREFIX}${lessonId}`, String(currentIndex));
+    }
   }, [currentIndex, lesson, lessonId]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      if (event.key === 'ArrowLeft') setCurrentIndex((i) => Math.min(Math.max(0, (lesson?.content_blocks.length ?? 1) - 1), i + 1));
+      if (event.key === 'ArrowRight') setCurrentIndex((i) => Math.max(0, i - 1));
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lesson?.content_blocks.length]);
 
   const completeMutation = useMutation({
     mutationFn: () => completeLesson(lessonId, token as string),
@@ -49,14 +84,19 @@ export default function LessonPage() {
       queryClient.setQueryData(['lesson-progress', lessonId], newProgress);
       if (typeof window !== 'undefined') window.localStorage.removeItem(`${STORAGE_PREFIX}${lessonId}`);
       showToast(`🏆 שיעור הושלם! (+${newProgress.xp_earned} XP)`, 'success');
-      fetchApi('/auth/me', { headers: { Authorization: `Bearer ${token}` } }).then((data) => updateXp(data.user.xp_total)).catch(() => {});
+      fetchApi('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+        .then((data) => updateXp(data.user.xp_total))
+        .catch(() => {});
     },
   });
 
   const handleCorrectAnswer = (xpEarned: number) => {
     showToast(`+${xpEarned} XP`, 'success');
-    getLessonProgress(lessonId, token as string).then((p) => queryClient.setQueryData(['lesson-progress', lessonId], p));
-    fetchApi('/auth/me', { headers: { Authorization: `Bearer ${token}` } }).then((data) => updateXp(data.user.xp_total)).catch(() => {});
+    getLessonProgress(lessonId, token as string)
+      .then((p) => queryClient.setQueryData(['lesson-progress', lessonId], p));
+    fetchApi('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then((data) => updateXp(data.user.xp_total))
+      .catch(() => {});
   };
 
   const blocks = lesson?.content_blocks ?? [];
@@ -65,32 +105,184 @@ export default function LessonPage() {
   const isLast = blocks.length > 0 && currentIndex === blocks.length - 1;
   const isCompleted = progress?.completed ?? false;
   const progressPercent = blocks.length ? Math.round(((currentIndex + 1) / blocks.length) * 100) : 0;
+  const completedBlocks = Math.min(currentIndex + 1, blocks.length);
+  const embeddedQuestionCount = blocks.filter((block) => block.type === 'embedded_question').length;
 
-  const outline = useMemo(() => blocks.map((block, index) => ({ index, label: ({ simple_explanation: 'הסבר פשוט', normal_explanation: 'הסבר מעמיק', solved_example: 'דוגמה פתורה', normal_method: 'שיטת פתרון', fast_method: 'שיטה מהירה', common_mistakes: 'טעויות נפוצות', guided_practice: 'תרגול מודרך', summary: 'סיכום' } as Record<string, string>)[block.section] ?? block.section })), [blocks]);
+  const outline = useMemo(
+    () => blocks.map((block, index) => ({
+      index,
+      label: SECTION_LABEL[block.section] ?? block.section,
+      type: block.type,
+    })),
+    [blocks],
+  );
 
-  if (isLoading) return <div className="max-w-4xl mx-auto space-y-4"><Skeleton className="h-24 w-full" /><Skeleton className="h-64 w-full" /></div>;
-  if (isError || !lesson) return <div className="text-center text-slate-500 py-20">לא הצלחנו לטעון את השיעור.</div>;
-  if (!blocks.length) return <div className="max-w-3xl mx-auto text-center py-16"><Card className="p-10"><BookOpenFallback /><h2 className="text-xl font-bold text-slate-900 mt-4">השיעור עדיין בבנייה</h2><p className="text-slate-500 mt-2">התוכן של השיעור הזה טרם נוסף למערכת.</p><button onClick={() => router.push('/learn')} className="mt-6 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold">חזרה למרכז הלמידה</button></Card></div>;
+  if (isLoading) {
+    return <div className="max-w-4xl mx-auto space-y-4"><Skeleton className="h-24 w-full" /><Skeleton className="h-64 w-full" /></div>;
+  }
+
+  if (isError || !lesson) {
+    return <div className="text-center text-slate-500 py-20">לא הצלחנו לטעון את השיעור.</div>;
+  }
+
+  if (!blocks.length) {
+    return (
+      <div className="max-w-3xl mx-auto text-center py-16">
+        <Card className="p-10">
+          <BookOpenFallback />
+          <h2 className="text-xl font-bold text-slate-900 mt-4">השיעור עדיין בבנייה</h2>
+          <p className="text-slate-500 mt-2">התוכן של השיעור הזה טרם נוסף למערכת.</p>
+          <button onClick={() => router.push('/learn')} className="mt-6 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold">חזרה למרכז הלמידה</button>
+        </Card>
+      </div>
+    );
+  }
+
+  const goNext = () => setCurrentIndex((i) => Math.min(blocks.length - 1, i + 1));
+  const goPrevious = () => setCurrentIndex((i) => Math.max(0, i - 1));
 
   return (
     <div className="max-w-5xl mx-auto pb-12">
-      <div className="mb-4 flex items-center justify-between gap-3"><Link href="/learn#lessons" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"><ArrowRight className="w-4 h-4" /> מרכז הלמידה</Link><div className="flex items-center gap-2 text-xs text-slate-400"><Clock3 className="w-3.5 h-3.5" /> למידה בקצב שלך · נשמר אוטומטית</div></div>
-      <div className="flex items-start justify-between gap-4"><LessonHeader lesson={lesson} />{isCompleted && <Badge variant="success" icon={<PartyPopper className="w-3 h-3" />}>הושלם</Badge>}</div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Link href="/learn#lessons" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+            <ArrowRight className="w-4 h-4" /> מרכז הלמידה
+          </Link>
+          <span className="hidden sm:inline text-slate-300">/</span>
+          <span className="hidden sm:inline text-sm font-semibold text-slate-500">{lesson.category.name}</span>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-slate-400">
+          <Link href="/practice" className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-indigo-600 font-bold hover:bg-indigo-50">
+            <Target className="w-3.5 h-3.5" /> תרגול
+          </Link>
+          <span className="hidden sm:flex items-center gap-1.5"><Clock3 className="w-3.5 h-3.5" /> נשמר אוטומטית</span>
+        </div>
+      </div>
+
+      <div className="flex items-start justify-between gap-4">
+        <LessonHeader lesson={lesson} />
+        {isCompleted && <Badge variant="success" icon={<PartyPopper className="w-3 h-3" />}>הושלם</Badge>}
+      </div>
+
+      <div className="mb-5 grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <Card className="p-3.5 border-indigo-100 bg-indigo-50/60">
+          <div className="text-[11px] font-bold text-indigo-600">התקדמות</div>
+          <div className="mt-1 text-lg font-black text-slate-900">{progressPercent}%</div>
+        </Card>
+        <Card className="p-3.5">
+          <div className="text-[11px] font-bold text-slate-500">שלבים</div>
+          <div className="mt-1 text-lg font-black text-slate-900">{completedBlocks}/{blocks.length}</div>
+        </Card>
+        <Card className="hidden sm:block p-3.5">
+          <div className="text-[11px] font-bold text-slate-500">תרגול משולב</div>
+          <div className="mt-1 text-lg font-black text-slate-900">{embeddedQuestionCount} שאלות</div>
+        </Card>
+      </div>
+
       <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1fr_240px] gap-6">
         <main className="min-w-0">
-          <Card className="p-4 sm:p-5 mb-5 border-indigo-100 bg-gradient-to-l from-white to-indigo-50/50"><div className="flex items-center justify-between gap-3 mb-3"><div><div className="text-xs font-bold text-indigo-600">התקדמות</div><div className="text-sm font-semibold text-slate-700">שלב {currentIndex + 1} מתוך {blocks.length}</div></div><div className="text-xl font-black text-indigo-600">{progressPercent}%</div></div><ProgressBar current={currentIndex + 1} total={blocks.length} label={`שלב ${currentIndex + 1} מתוך ${blocks.length}`} /></Card>
-          <button onClick={() => setShowOutline((v) => !v)} className="lg:hidden mb-4 flex items-center gap-2 text-sm font-semibold text-slate-700 px-4 py-2 rounded-xl border border-slate-200 bg-white"><List className="w-4 h-4" /> תוכן השיעור</button>
+          <Card className="p-4 sm:p-5 mb-5 border-indigo-100 bg-gradient-to-l from-white to-indigo-50/50">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <div className="text-xs font-bold text-indigo-600">המסלול שלך</div>
+                <div className="text-sm font-semibold text-slate-700">שלב {currentIndex + 1} מתוך {blocks.length}</div>
+              </div>
+              <div className="text-xl font-black text-indigo-600">{progressPercent}%</div>
+            </div>
+            <ProgressBar current={currentIndex + 1} total={blocks.length} label={`שלב ${currentIndex + 1} מתוך ${blocks.length}`} />
+          </Card>
+
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <button onClick={() => setShowOutline((v) => !v)} className="lg:hidden inline-flex items-center gap-2 text-sm font-semibold text-slate-700 px-4 py-2 rounded-xl border border-slate-200 bg-white">
+              <List className="w-4 h-4" /> תוכן השיעור
+            </button>
+            <div className="text-xs text-slate-400">חיצים ← → למעבר בין שלבים</div>
+          </div>
+
           {showOutline && <LessonOutline outline={outline} currentIndex={currentIndex} onSelect={(i) => { setCurrentIndex(i); setShowOutline(false); }} />}
-          <Card className="p-6 sm:p-8 min-h-[320px] shadow-sm"><AnimatePresence mode="wait"><motion.div key={currentBlock.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.25 }}><ContentBlockRenderer block={currentBlock} token={token} onCorrect={handleCorrectAnswer} /></motion.div></AnimatePresence></Card>
-          <div className="flex items-center justify-between mt-6 gap-3"><button onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))} disabled={isFirst} className="flex items-center gap-1 px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-medium disabled:opacity-30 hover:bg-slate-50 transition-colors"><ChevronRight className="w-4 h-4" /> הקודם</button>{!isLast ? <button onClick={() => setCurrentIndex((i) => Math.min(blocks.length - 1, i + 1))} className="flex items-center gap-1 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition-colors">הבא <ChevronLeft className="w-4 h-4" /></button> : isCompleted ? <button onClick={() => router.push('/learn')} className="flex items-center gap-1 px-5 py-2.5 rounded-xl bg-emerald-100 text-emerald-700 font-semibold">🏆 חזרה למרכז הלימוד</button> : <button onClick={() => completeMutation.mutate()} disabled={completeMutation.isPending} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50"><Zap className="w-4 h-4" />{completeMutation.isPending ? 'שומר...' : 'סיימתי את השיעור 🎉'}</button>}</div>
-          {completeMutation.isSuccess && <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="mt-6 text-center bg-gradient-to-l from-emerald-50 to-indigo-50 border border-emerald-100 rounded-2xl p-6"><div className="text-4xl mb-2">🎉</div><h3 className="font-bold text-slate-900 text-lg mb-1">כל הכבוד! סיימת את השיעור</h3><p className="text-slate-600 text-sm">צברת {completeMutation.data?.xp_earned ?? 50} XP בשיעור הזה</p><Link href="/learn" className="inline-flex mt-4 items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700">להמשיך לשיעור הבא <ArrowLeft className="w-4 h-4" /></Link></motion.div>}
+
+          {currentBlock.type === 'embedded_question' && (
+            <Card className="mb-4 border-amber-200 bg-amber-50/70 p-4">
+              <div className="flex items-center gap-2 text-sm font-bold text-amber-800">
+                <BookOpenCheck className="w-4 h-4" /> תרגול בתוך השיעור
+              </div>
+              <p className="text-xs text-amber-700 mt-1">ענה על השאלה לפני שאתה ממשיך לשלב הבא. תשובה נכונה מעניקה XP.</p>
+            </Card>
+          )}
+
+          <Card className="p-6 sm:p-8 min-h-[320px] shadow-sm">
+            <AnimatePresence mode="wait">
+              <motion.div key={currentBlock.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.25 }}>
+                <ContentBlockRenderer block={currentBlock} token={token} onCorrect={handleCorrectAnswer} />
+              </motion.div>
+            </AnimatePresence>
+          </Card>
+
+          <div className="flex items-center justify-between mt-6 gap-3">
+            <button onClick={goPrevious} disabled={isFirst} className="flex items-center gap-1 px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-medium disabled:opacity-30 hover:bg-slate-50 transition-colors">
+              <ChevronRight className="w-4 h-4" /> הקודם
+            </button>
+            {!isLast ? (
+              <button onClick={goNext} className="flex items-center gap-1 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition-colors">
+                הבא <ChevronLeft className="w-4 h-4" />
+              </button>
+            ) : isCompleted ? (
+              <Link href="/practice" className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700">
+                <Target className="w-4 h-4" /> לתרגול
+              </Link>
+            ) : (
+              <button onClick={() => completeMutation.mutate()} disabled={completeMutation.isPending} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50">
+                <Zap className="w-4 h-4" />{completeMutation.isPending ? 'שומר...' : 'סיימתי את השיעור 🎉'}
+              </button>
+            )}
+          </div>
+
+          {completeMutation.isSuccess && (
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="mt-6 text-center bg-gradient-to-l from-emerald-50 to-indigo-50 border border-emerald-100 rounded-2xl p-6">
+              <div className="text-4xl mb-2">🎉</div>
+              <h3 className="font-bold text-slate-900 text-lg mb-1">כל הכבוד! סיימת את השיעור</h3>
+              <p className="text-slate-600 text-sm">צברת {completeMutation.data?.xp_earned ?? 50} XP בשיעור הזה</p>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                <Link href="/practice" className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700">
+                  להמשיך לתרגול <ArrowLeft className="w-4 h-4" />
+                </Link>
+                <Link href="/learn" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
+                  מרכז הלמידה
+                </Link>
+              </div>
+            </motion.div>
+          )}
         </main>
-        <aside className="hidden lg:block"><LessonOutline outline={outline} currentIndex={currentIndex} onSelect={setCurrentIndex} /></aside>
+
+        <aside className="hidden lg:block">
+          <LessonOutline outline={outline} currentIndex={currentIndex} onSelect={setCurrentIndex} />
+        </aside>
       </div>
+
       <ToastContainer toasts={toasts} />
     </div>
   );
 }
 
-function LessonOutline({ outline, currentIndex, onSelect }: { outline: { index: number; label: string }[]; currentIndex: number; onSelect: (index: number) => void }) { return <Card className="p-4 sticky top-4"><div className="flex items-center gap-2 font-bold text-slate-900 mb-3"><List className="w-4 h-4 text-indigo-600" /> תוכן השיעור</div><div className="space-y-1">{outline.map((item) => <button key={item.index} onClick={() => onSelect(item.index)} className={`w-full text-right flex items-center gap-2 p-2.5 rounded-lg text-sm transition-colors ${item.index === currentIndex ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>{item.index < currentIndex ? <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> : <span className="w-4 h-4 rounded-full border border-slate-300 text-[10px] flex items-center justify-center shrink-0">{item.index + 1}</span>}<span className="truncate">{item.label}</span></button>)}</div></Card>; }
-function BookOpenFallback() { return <div className="mx-auto w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center"><List className="w-7 h-7" /></div>; }
+function LessonOutline({ outline, currentIndex, onSelect }: { outline: { index: number; label: string; type: string }[]; currentIndex: number; onSelect: (index: number) => void }) {
+  return (
+    <Card className="p-4 sticky top-4 mb-4">
+      <div className="flex items-center gap-2 font-bold text-slate-900 mb-3">
+        <List className="w-4 h-4 text-indigo-600" /> תוכן השיעור
+      </div>
+      <div className="space-y-1">
+        {outline.map((item) => (
+          <button key={item.index} onClick={() => onSelect(item.index)} className={`w-full text-right flex items-center gap-2 p-2.5 rounded-lg text-sm transition-colors ${item.index === currentIndex ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>
+            {item.index < currentIndex ? <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> : <span className="w-4 h-4 rounded-full border border-slate-300 text-[10px] flex items-center justify-center shrink-0">{item.index + 1}</span>}
+            <span className="truncate">{item.label}</span>
+            {item.type === 'embedded_question' && <Target className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+          </button>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function BookOpenFallback() {
+  return <div className="mx-auto w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center"><List className="w-7 h-7" /></div>;
+}
