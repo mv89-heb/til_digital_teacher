@@ -10,7 +10,7 @@ import Card from '@/components/ui/Card';
 import Skeleton from '@/components/ui/Skeleton';
 import Alert from '@/components/ui/Alert';
 
-const PAGE_SIZE_OPTIONS = [24, 60];
+const PAGE_SIZE_OPTIONS = [24, 60, 120, 240, 500];
 
 function difficultyLabel(value: Question['difficulty']) {
   return value === 'easy' ? 'קל' : value === 'medium' ? 'בינוני' : 'בחינה';
@@ -49,7 +49,15 @@ export default function QuestionBankBrowser({ categories }: { categories: Catego
   });
 
   const data = query.data;
-  const currentCategory = useMemo(() => categories.find((category) => category.id === categoryId), [categories, categoryId]);
+  const currentCategory = useMemo(
+    () => categories.find((category) => category.id === categoryId),
+    [categories, categoryId],
+  );
+
+  const firstResult = data && data.total > 0 ? (data.page - 1) * data.per_page + 1 : 0;
+  const lastResult = data && data.total > 0
+    ? Math.min(data.page * data.per_page, data.total)
+    : 0;
 
   return (
     <section className="space-y-4" dir="rtl">
@@ -58,7 +66,9 @@ export default function QuestionBankBrowser({ categories }: { categories: Catego
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-black text-slate-900">מאגר השאלות המלא</h2>
-              <p className="mt-1 text-sm text-slate-500">עיון בכל השאלות שפורסמו במערכת, עם חיפוש וסינון.</p>
+              <p className="mt-1 text-sm text-slate-500">
+                עיון בכל השאלות שפורסמו במערכת, עם חיפוש, סינון ודפדוף מהיר.
+              </p>
             </div>
             {data && (
               <div className="rounded-xl bg-indigo-50 px-3 py-2 text-sm font-extrabold text-indigo-700">
@@ -73,7 +83,7 @@ export default function QuestionBankBrowser({ categories }: { categories: Catego
               <input
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="חיפוש בשאלה, מזהה, נושא או מיומנות"
+                placeholder="חיפוש בשאלה, מזהה, נושא, מיומנות או תגית"
                 className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-9 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               />
             </label>
@@ -112,10 +122,17 @@ export default function QuestionBankBrowser({ categories }: { categories: Catego
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
             <div className="flex flex-wrap items-center gap-2">
-              {currentCategory && <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 font-bold">{currentCategory.name}</span>}
-              {search && <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 font-bold">חיפוש: {search}</span>}
+              {currentCategory && (
+                <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 font-bold">{currentCategory.name}</span>
+              )}
+              {search && (
+                <span className="max-w-full truncate rounded-lg bg-slate-100 px-2.5 py-1.5 font-bold" title={search}>
+                  חיפוש: {search}
+                </span>
+              )}
               <span>הצגה לעיון בלבד — התשובה הנכונה אינה נחשפת.</span>
             </div>
+
             <label className="flex items-center gap-2 font-bold text-slate-600">
               שאלות בעמוד:
               <select
@@ -126,7 +143,9 @@ export default function QuestionBankBrowser({ categories }: { categories: Catego
                 }}
                 className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs"
               >
-                {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
               </select>
             </label>
           </div>
@@ -142,7 +161,18 @@ export default function QuestionBankBrowser({ categories }: { categories: Catego
       {query.isError && <Alert variant="error">לא הצלחנו לטעון את מאגר השאלות. נסה לרענן.</Alert>}
 
       {data && data.questions.length === 0 && (
-        <Card className="p-10 text-center text-slate-500">לא נמצאו שאלות לפי הסינון שבחרת.</Card>
+        <Card className="p-10 text-center text-slate-500">
+          <p>לא נמצאו שאלות לפי הסינון שבחרת.</p>
+          {data.total > 0 && (
+            <button
+              type="button"
+              onClick={() => setPage(1)}
+              className="mt-3 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-indigo-700"
+            >
+              חזרה לעמוד הראשון
+            </button>
+          )}
+        </Card>
       )}
 
       {data && data.questions.length > 0 && (
@@ -159,17 +189,23 @@ export default function QuestionBankBrowser({ categories }: { categories: Catego
 
           <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
             <button
+              type="button"
               disabled={!data.has_previous}
               onClick={() => setPage((p) => p - 1)}
               className="inline-flex items-center justify-center gap-1 rounded-xl px-4 py-2 text-sm font-bold transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronRight className="h-4 w-4" /> הקודם
             </button>
+
             <div className="text-center text-sm font-bold text-slate-600">
-              עמוד {data.page} מתוך {data.total_pages || 1}
-              <span className="mr-2 font-normal text-slate-400">• {data.total.toLocaleString('he-IL')} שאלות</span>
+              <div>מציג {firstResult.toLocaleString('he-IL')}–{lastResult.toLocaleString('he-IL')} מתוך {data.total.toLocaleString('he-IL')}</div>
+              <div className="mt-0.5 text-xs font-normal text-slate-400">
+                עמוד {data.page} מתוך {data.total_pages || 1}
+              </div>
             </div>
+
             <button
+              type="button"
               disabled={!data.has_next}
               onClick={() => setPage((p) => p + 1)}
               className="inline-flex items-center justify-center gap-1 rounded-xl px-4 py-2 text-sm font-bold transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
@@ -208,7 +244,7 @@ function QuestionCard({ question, number }: { question: Question; number: number
         {question.difficulty_level && <span>• רמה {question.difficulty_level}/5</span>}
       </div>
 
-      <p className="text-base font-semibold leading-7 text-slate-900 whitespace-pre-wrap">
+      <p className="whitespace-pre-wrap text-base font-semibold leading-7 text-slate-900">
         {question.body?.body ?? 'שאלה ללא טקסט'}
       </p>
 
@@ -262,7 +298,9 @@ function VisualQuestionData({ data }: { data: Record<string, unknown> | string }
 function parseJson(value: string): Record<string, unknown> | null {
   try {
     const parsed = JSON.parse(value) as unknown;
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
   } catch {
     return null;
   }
