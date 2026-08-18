@@ -2,17 +2,17 @@ import type { Category, DashboardSummary, LessonDetail, LessonProgress, SubmitAn
 import { useAuthStore } from '@/store/useAuthStore';
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
-const API_URL = configuredApiUrl || (process.env.NODE_ENV === 'development' ? 'http://localhost:5000/api' : '');
 
-function assertApiConfiguration() {
-  if (!API_URL) {
-    throw new Error('שירות השרת אינו מוגדר. יש להגדיר NEXT_PUBLIC_API_URL.');
-  }
-}
+// Production has a dedicated Render backend. Keep an explicit fallback so a
+// missing build-time NEXT_PUBLIC_API_URL cannot silently turn API requests into
+// same-origin requests against the Next.js frontend service.
+const API_URL =
+  configuredApiUrl ||
+  (process.env.NODE_ENV === 'development'
+    ? 'http://localhost:5000/api'
+    : 'https://til-digital-teacher.onrender.com/api');
 
 export async function fetchApi(endpoint: string, options: RequestInit = {}) {
-  assertApiConfiguration();
-
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers: {
@@ -36,7 +36,7 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(data.error || 'משהו השתבש, אנא נסה שוב.');
+    throw new Error(data.error || `בקשת השרת נכשלה (${response.status}).`);
   }
 
   return data;
