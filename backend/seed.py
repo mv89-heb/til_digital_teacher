@@ -1,8 +1,8 @@
 """Idempotent demo-data seed for Render/Neon deployments.
 
 The Render service currently invokes this script before Gunicorn. The script
-therefore upgrades the configured database first, then creates the minimal
-published learning content required by the application. It never drops data.
+therefore upgrades the configured database first, then creates the published
+learning content required by the application. It never drops data.
 """
 
 import os
@@ -27,6 +27,7 @@ from app.models.lesson_content import LessonContent
 from app.models.question import Question
 from app.models.user import User
 from app.utils.slugify import slugify
+from question_bank import build_question_bank
 
 ADMIN_EMAIL = "admin@til-teacher.local"
 ADMIN_PASSWORD = os.getenv("SEED_ADMIN_PASSWORD", "Admin12345!")
@@ -48,8 +49,24 @@ def _answers(options: list[tuple[str, bool, str]]) -> list[Answer]:
     ]
 
 
+def _seed_question_bank(category: Category, lesson: Lesson) -> int:
+    """Add missing stable bank questions without duplicating existing data."""
+    existing_keys = {
+        (question.question_metadata or {}).get("bank_key")
+        for question in Question.query.with_entities(Question.question_metadata).all()
+    }
+    bank = build_question_bank(category.id, lesson.id)
+    missing = [
+        question for question in bank
+        if (question.question_metadata or {}).get("bank_key") not in existing_keys
+    ]
+    if missing:
+        db.session.add_all(missing)
+    return len(missing)
+
+
 def seed_demo_data() -> dict:
-    """Create the admin, published quantitative category and demo lesson."""
+    """Create the admin, published quantitative category, demo lesson and bank."""
     admin = User.query.filter_by(email=ADMIN_EMAIL).first()
     if not admin:
         admin = User(
@@ -241,12 +258,16 @@ def seed_demo_data() -> dict:
         ]
         db.session.add_all(questions)
 
+    bank_added = _seed_question_bank(category, lesson)
     db.session.commit()
+
+    total_questions = Question.query.filter_by(status=ContentStatus.PUBLISHED).count()
     return {
         "admin_email": ADMIN_EMAIL,
         "category_id": category.id,
         "lesson_id": lesson.id,
-        "already_seeded": False,
+        "bank_added": bank_added,
+        "published_questions": total_questions,
     }
 
 
