@@ -10,7 +10,7 @@ from app.utils.error_handlers import register_error_handlers
 def create_app(config_name=None):
     flask_app = Flask(__name__)
 
-    config_name = config_name or os.getenv("FLASK_ENV", "development")
+    config_name = config_name or os.getenv("FLASK_ENV", "production")
     from config import config_by_name
 
     flask_app.config.from_object(config_by_name[config_name])
@@ -28,10 +28,6 @@ def create_app(config_name=None):
     else:
         allowed_origins = set(configured_origins or [])
 
-    # Flask-CORS remains enabled for the normal response path. We also add a
-    # small explicit CORS layer below because Render/browser preflight failures
-    # must never depend on how Flask-CORS parses a dynamically assembled origin
-    # configuration. This is especially important for POST /api/auth/login.
     cors.init_app(
         flask_app,
         resources={r"/api/.*": {"origins": list(allowed_origins)}},
@@ -48,12 +44,15 @@ def create_app(config_name=None):
         if origin and origin not in allowed_origins:
             return jsonify({"error": "CORS origin not allowed"}), 403
 
-        response = flask_app.make_response("", 204)
+        response = flask_app.make_response(("", 204))
         if origin:
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Vary"] = "Origin"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+        response.headers["Access-Control-Allow-Headers"] = request.headers.get(
+            "Access-Control-Request-Headers",
+            "Authorization, Content-Type",
+        )
         response.headers["Access-Control-Max-Age"] = "600"
         return response
 
