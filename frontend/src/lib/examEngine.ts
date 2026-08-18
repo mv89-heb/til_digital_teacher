@@ -13,6 +13,7 @@ export type ExamEvent =
   | { type: 'HYDRATE'; session: ExamSession; clientNowMs: number }
   | { type: 'SELECT_ANSWER'; questionId: number; answerId: number }
   | { type: 'VIEWED'; questionId: number }
+  | { type: 'GO_TO_QUESTION'; questionIndex: number }
   | { type: 'NEXT_QUESTION'; nextQuestionIndex: number }
   | { type: 'SECTION_EXPIRED' }
   | { type: 'SECTION_SYNCED'; session: ExamSession; clientNowMs: number }
@@ -50,8 +51,9 @@ export function reduceExamState(state: ExamClientState, event: ExamEvent): ExamC
       return state.viewedQuestionIds.includes(event.questionId)
         ? state
         : { ...state, viewedQuestionIds: [...state.viewedQuestionIds, event.questionId] };
+    case 'GO_TO_QUESTION':
     case 'NEXT_QUESTION':
-      return { ...state, currentQuestionIndex: event.nextQuestionIndex };
+      return { ...state, currentQuestionIndex: event.questionIndex ?? event.nextQuestionIndex };
     case 'SECTION_EXPIRED':
       return { ...state, phase: 'SECTION_EXPIRED' };
     case 'SECTION_SYNCED':
