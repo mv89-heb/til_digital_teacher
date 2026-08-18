@@ -1,0 +1,78 @@
+{
+  "name": "סימולציית תיל מלאה - גרסה 1",
+  "description": "סימולציה לימודית בסגנון מבחן מיון פסיכוטכני. אינה משחזרת נוסחת כיול של מבחן רשמי.",
+  "configuration": {
+    "engine_version": "teil-sim-v1",
+    "navigation": {
+      "allow_question_back": true,
+      "allow_section_back": false,
+      "auto_advance_on_timeout": true
+    },
+    "scoring": {
+      "scale_min": 200,
+      "scale_max": 800,
+      "accuracy_weight": 0.8,
+      "completion_weight": 0.1,
+      "speed_weight": 0.1
+    },
+    "rules": {
+      "calculator_allowed": false,
+      "answers_per_question": 4,
+      "one_final_answer_per_question": true
+    }
+  },
+  "sections": [
+    {
+      "name": "חשיבה כמותית",
+      "category": "quantitative",
+      "display_order": 0,
+      "duration_seconds": 900,
+      "question_count": 15,
+      "instructions": "פתור את השאלות ללא מחשבון. בסיום הזמן הפרק יינעל אוטומטית.",
+      "scoring_configuration": {
+        "score_weight": 1.2,
+        "target_time_ms": 60000
+      },
+      "question_ids": [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115]
+    },
+    {
+      "name": "חשיבה מילולית",
+      "category": "verbal",
+      "display_order": 1,
+      "duration_seconds": 720,
+      "question_count": 12,
+      "instructions": "בחר את התשובה המתאימה ביותר. הפרק ננעל עם פקיעת הזמן.",
+      "scoring_configuration": {
+        "score_weight": 1.0,
+        "target_time_ms": 55000
+      },
+      "question_ids": [201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212]
+    },
+    {
+      "name": "חשיבה מרחבית וצורנית",
+      "category": "spatial",
+      "display_order": 2,
+      "duration_seconds": 900,
+      "question_count": 15,
+      "instructions": "בחלק מהשאלות יוצגו מטריצות, סיבובים וקיפולי צורות.",
+      "scoring_configuration": {
+        "score_weight": 1.1,
+        "target_time_ms": 60000
+      },
+      "question_ids": [301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315]
+    },
+    {
+      "name": "אנגלית",
+      "category": "english",
+      "display_order": 3,
+      "duration_seconds": 600,
+      "question_count": 10,
+      "instructions": "קרא את השאלה ובחר תשובה אחת מתוך ארבע.",
+      "scoring_configuration": {
+        "score_weight": 0.8,
+        "target_time_ms": 50000
+      },
+      "question_ids": [401, 402, 403, 404, 405, 406, 407, 408, 409, 410]
+    }
+  ]
+}
