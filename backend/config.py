@@ -3,6 +3,10 @@ import os
 from app.core.security_policy import require_production_secret
 
 
+def _csv_env(name: str, default: str = "") -> list[str]:
+    return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
+
+
 class Config:
     """Base configuration shared by all environments."""
 
@@ -12,7 +16,7 @@ class Config:
         "DATABASE_URL", "postgresql://user:password@localhost/til_db"
     )
     JWT_EXPIRES_DAYS = int(os.getenv("JWT_EXPIRES_DAYS", "1"))
-    CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+    CORS_ORIGINS = _csv_env("CORS_ORIGINS", "http://localhost:3000")
     MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(2 * 1024 * 1024)))
     RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
 
@@ -26,14 +30,22 @@ class TestingConfig(Config):
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = os.getenv("TEST_DATABASE_URL", "sqlite:///:memory:")
     SECRET_KEY = "test-secret-key"
-    CORS_ORIGINS = "http://localhost:3000"
+    CORS_ORIGINS = ["http://localhost:3000"]
     RATELIMIT_ENABLED = False
 
 
 class ProductionConfig(Config):
     DEBUG = False
     SECRET_KEY = require_production_secret(os.getenv("JWT_SECRET"), "JWT_SECRET")
-    CORS_ORIGINS = os.getenv("CORS_ORIGINS", "")
+
+    _database_url = os.getenv("DATABASE_URL")
+    if not _database_url:
+        raise RuntimeError("DATABASE_URL must be configured in production (Neon PostgreSQL)")
+    SQLALCHEMY_DATABASE_URI = _database_url
+
+    CORS_ORIGINS = _csv_env("CORS_ORIGINS")
+    if not CORS_ORIGINS:
+        raise RuntimeError("CORS_ORIGINS must be configured in production")
 
 
 config_by_name = {
