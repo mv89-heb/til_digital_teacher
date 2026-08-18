@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from app.extensions import db
 from app.models.category import Category
 from app.models.constants import ContentStatus, StudentLevelValue
@@ -14,10 +16,13 @@ ADVANCED_MIN_ATTEMPTS = 15
 
 
 class ProgressService:
-    """Keeps UserProgress/StudentLevel in sync (called from PracticeService
-    right after each PracticeAttempt / lesson completion — same pattern as
-    XPService keeping User.xp_total in sync with XPTransaction), and
-    assembles the read-only dashboard summary.
+    """Keeps UserProgress/StudentLevel in sync and assembles the dashboard.
+
+    The dashboard is intentionally resilient to a partially migrated production
+    database. Category/lesson content remains available even when the optional
+    progress rollup tables have not yet been created in the deployed database.
+    The application logs the schema problem instead of turning the whole
+    dashboard into a 500 response.
     """
 
     @staticmethod
@@ -40,10 +45,6 @@ class ProgressService:
 
     @staticmethod
     def _calculate_level(attempted: int, correct: int) -> str:
-        """Simple, documented heuristic based on accuracy + volume.
-        Does not yet factor in solving time or hint usage — neither is
-        tracked anywhere in the system yet (see Stage 4 planning notes).
-        """
         if attempted < MIN_ATTEMPTS_FOR_RATING:
             return StudentLevelValue.BEGINNER
 
@@ -82,14 +83,35 @@ class ProgressService:
     @staticmethod
     def get_dashboard_summary(user_id: int) -> dict:
         user = db.session.get(User, user_id)
+        if user is None:
+            raise ValueError("User not found")
 
         categories = (
             Category.query.filter_by(parent_id=None, status=ContentStatus.PUBLISHED)
             .order_by(Category.order)
             .all()
         )
-        progress_by_category = {p.category_id: p for p in UserProgress.query.filter_by(user_id=user_id).all()}
-        level_by_category = {lv.category_id: lv for lv in StudentLevel.query.filter_by(user_id=user_id).all()}
+
+        # These are cached/derived Stage-4 tables. Keep the read path resilient
+        # so a production deploy with migrations lagging behind can still load
+        # the basic dashboard instead of returning HTTP 500.
+        progress_by_category = {}
+        level_by_category = {}
+        try:
+            progress_by_category = {
+                p.category_id: p
+                for p in UserProgress.query.filter_by(user_id=user_id).all()
+            }
+            level_by_category = {
+                lv.category_id: lv
+                for lv in StudentLevel.query.filter_by(user_id=user_id).all()
+            }
+        except SQLAlchemyError:
+            db.session.rollback()
+            db.session.bind.logger.warning(
+                "Dashboard progress rollups are unavailable; using empty progress data",
+                exc_info=True,
+            )
 
         category_summaries = []
         total_attempted = 0
@@ -130,14 +152,23 @@ class ProgressService:
             total_lessons_completed += lessons_completed
             total_lessons_available += lessons_total
 
-        lesson_progress_rows = (
-            UserLessonProgress.query.filter_by(user_id=user_id)
-            .order_by(UserLessonProgress.last_viewed_at.desc())
-            .all()
-        )
         in_progress = []
         completed = []
         continue_learning = None
+
+        try:
+            lesson_progress_rows = (
+                UserLessonProgress.query.filter_by(user_id=user_id)
+                .order_by(UserLessonProgress.last_viewed_at.desc())
+                .all()
+            )
+        except SQLAlchemyError:
+            db.session.rollback()
+            lesson_progress_rows = []
+            db.session.bind.logger.warning(
+                "Dashboard lesson progress is unavailable; using empty learning history",
+                exc_info=True,
+            )
 
         for row in lesson_progress_rows:
             lesson = db.session.get(Lesson, row.lesson_id)
