@@ -17,13 +17,12 @@ ADVANCED_MIN_ATTEMPTS = 15
 
 
 class ProgressService:
-    """Keeps UserProgress/StudentLevel in sync and assembles the dashboard.
+    """Keeps progress rollups in sync and assembles the student dashboard.
 
-    The dashboard is intentionally resilient to a partially migrated production
-    database. Category/lesson content remains available even when the optional
-    progress rollup tables have not yet been created in the deployed database.
-    The application logs the schema problem instead of turning the whole
-    dashboard into a 500 response.
+    The dashboard read path is deliberately defensive because the production
+    database can temporarily be one migration behind the application code.
+    Cached progress tables are optional for dashboard rendering; the basic
+    content dashboard must continue to work without them.
     """
 
     @staticmethod
@@ -70,8 +69,9 @@ class ProgressService:
         progress.last_practiced_at = datetime.now(timezone.utc)
 
         level = ProgressService._get_or_create_level(user_id, category_id)
-        level.level = ProgressService._calculate_level(progress.questions_attempted, progress.questions_correct)
-
+        level.level = ProgressService._calculate_level(
+            progress.questions_attempted, progress.questions_correct
+        )
         db.session.commit()
 
     @staticmethod
@@ -83,19 +83,33 @@ class ProgressService:
 
     @staticmethod
     def get_dashboard_summary(user_id: int) -> dict:
+        """Return a dashboard payload without allowing optional schema gaps to 500.
+
+        Important: this method never writes data. If a derived progress table
+        is missing, we simply use zeroed progress values. If lesson-history
+        tables are unavailable, the dashboard still renders its content/stats.
+        """
         user = db.session.get(User, user_id)
         if user is None:
             raise ValueError("User not found")
 
-        categories = (
-            Category.query.filter_by(parent_id=None, status=ContentStatus.PUBLISHED)
-            .order_by(Category.order)
-            .all()
-        )
+        # Content is the essential part of the dashboard. Keep this query
+        # isolated so a stale/missing content index cannot poison the session.
+        try:
+            categories = (
+                Category.query.filter_by(
+                    parent_id=None,
+                    status=ContentStatus.PUBLISHED,
+                )
+                .order_by(Category.order)
+                .all()
+            )
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception("Dashboard category query failed")
+            categories = []
 
-        # These are cached/derived Stage-4 tables. Keep the read path resilient
-        # so a production deploy with migrations lagging behind can still load
-        # the basic dashboard instead of returning HTTP 500.
+        # Stage-4 derived tables are deliberately optional on this read path.
         progress_by_category = {}
         level_by_category = {}
         try:
@@ -121,12 +135,22 @@ class ProgressService:
         total_lessons_available = 0
 
         for category in categories:
-            lessons_total = Lesson.query.filter_by(
-                category_id=category.id, status=ContentStatus.PUBLISHED
-            ).count()
+            try:
+                lessons_total = Lesson.query.filter_by(
+                    category_id=category.id,
+                    status=ContentStatus.PUBLISHED,
+                ).count()
+            except SQLAlchemyError:
+                db.session.rollback()
+                current_app.logger.warning(
+                    "Dashboard lesson count failed for category %s; using zero",
+                    category.id,
+                    exc_info=True,
+                )
+                lessons_total = 0
+
             progress = progress_by_category.get(category.id)
             level = level_by_category.get(category.id)
-
             attempted = progress.questions_attempted if progress else 0
             correct = progress.questions_correct if progress else 0
             lessons_completed = progress.lessons_completed if progress else 0
@@ -172,14 +196,25 @@ class ProgressService:
             )
 
         for row in lesson_progress_rows:
-            lesson = db.session.get(Lesson, row.lesson_id)
+            try:
+                lesson = db.session.get(Lesson, row.lesson_id)
+            except SQLAlchemyError:
+                db.session.rollback()
+                current_app.logger.warning(
+                    "Dashboard could not load lesson %s; skipping history row",
+                    row.lesson_id,
+                    exc_info=True,
+                )
+                continue
+
             if not lesson or lesson.status != ContentStatus.PUBLISHED:
                 continue
 
+            category_name = lesson.category.name if lesson.category else ""
             entry = {
                 "lesson_id": lesson.id,
                 "title": lesson.title,
-                "category_name": lesson.category.name,
+                "category_name": category_name,
                 "last_viewed_at": row.last_viewed_at.isoformat() if row.last_viewed_at else None,
             }
             if row.completed_at:
