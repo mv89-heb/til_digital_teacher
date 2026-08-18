@@ -44,6 +44,13 @@ export async function getQuestionBank(token: string, options: { categoryId?: num
   const query = params.toString();
   return fetchApi(`/learning/question-bank${query ? `?${query}` : ''}`, { headers: authHeaders(token) });
 }
+export async function getTeacherLesson(query: string, token: string, options: { mode?: 'learn' | 'guided' | 'practice' | 'mistake'; questionId?: number } = {}) {
+  return fetchApi('/learning/teacher/teach', {
+    method: 'POST',
+    headers: authHeaders(token),
+    body: JSON.stringify({ query, mode: options.mode || 'learn', question_id: options.questionId ?? null }),
+  });
+}
 export async function getPracticeQuestions(token: string, options: { categoryId?: number; difficulty?: 'easy' | 'medium' | 'exam'; limit?: number; mode?: 'adaptive' | 'all' } = {}): Promise<PracticeQuestionPool> {
   const params = new URLSearchParams();
   if (options.categoryId) params.set('category_id', String(options.categoryId));
