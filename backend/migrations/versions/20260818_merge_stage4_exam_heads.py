@@ -1,11 +1,11 @@
 """Merge the Stage 4 and exam-engine migration heads.
 
 Revision ID: 20260818_merge_stage4_exam_heads
-Revises: 6d983a13bcd6, 20260818_exam_engine_integrity_fix
+Revises: 6d983a13bcd6, 20260818_exam_integrity_fix
 """
 
 revision = "20260818_merge_stage4_exam_heads"
-down_revision = ("6d983a13bcd6", "20260818_exam_engine_integrity_fix")
+down_revision = ("6d983a13bcd6", "20260818_exam_integrity_fix")
 branch_labels = None
 depends_on = None
 
