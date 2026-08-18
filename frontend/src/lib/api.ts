@@ -17,6 +17,16 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
 
 function authHeaders(token: string) { return { Authorization: `Bearer ${token}` }; }
 
+export type ExamCatalogItem = {
+  id: number;
+  name: string;
+  description: string | null;
+  duration_seconds: number;
+  section_count: number;
+  question_count: number;
+  sections: { name: string; category: string; duration_seconds: number; question_count: number }[];
+};
+
 export async function getCategories(): Promise<Category[]> {
   const data = await fetchApi('/learning/categories');
   return data.categories;
@@ -56,6 +66,7 @@ export async function getLessonProgress(lessonId: number | string, token: string
   const data = await fetchApi(`/learning/lessons/${lessonId}/progress`, { headers: authHeaders(token) }); return data.progress;
 }
 export async function getDashboard(token: string): Promise<DashboardSummary> { return fetchApi('/learning/dashboard', { headers: authHeaders(token) }); }
+export async function getExams(token: string): Promise<ExamCatalogItem[]> { const data = await fetchApi('/exams', { headers: authHeaders(token) }); return data.exams; }
 export async function startExam(examId: number, token: string): Promise<ExamSession> { const data = await fetchApi(`/exams/${examId}/sessions`, { method: 'POST', headers: authHeaders(token) }); return data.session; }
 export async function getExamSession(sessionId: number, token: string): Promise<ExamSession> { const data = await fetchApi(`/exams/sessions/${sessionId}`, { headers: authHeaders(token) }); return data.session; }
 export async function advanceExamSection(sessionId: number, token: string): Promise<ExamSession> { const data = await fetchApi(`/exams/sessions/${sessionId}/advance-section`, { method: 'POST', headers: authHeaders(token) }); return data.session; }
