@@ -1,6 +1,7 @@
 from flask import Blueprint, g, jsonify, request
 
 from app.models.exam_result_category import ExamResultCategory
+from app.services.exam_answer_service import ExamAnswerService
 from app.services.exam_service import ExamService
 from app.utils.decorators import jwt_required
 
@@ -44,17 +45,20 @@ def submit_answer(session_id):
     except (KeyError, TypeError, ValueError):
         return jsonify({"error": "session_question_id and answer_id are required integers"}), 400
 
-    answer = ExamService.submit_answer(
+    # elapsed_ms is intentionally ignored. The server calculates response
+    # time from QUESTION_VIEWED -> ANSWER_SUBMITTED timestamps.
+    answer = ExamAnswerService.submit(
         g.current_user["id"],
         session_id,
         session_question_id,
         answer_id,
-        data.get("elapsed_ms"),
     )
     return jsonify({"answer": {
         "id": answer.id,
         "is_correct": answer.is_correct,
         "score": str(answer.score) if answer.score is not None else None,
+        "response_time_ms": answer.response_time_ms,
+        "timing_source": "server",
     }}), 200
 
 
