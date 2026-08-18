@@ -9,6 +9,7 @@ adds missing bank keys, so deployments are idempotent.
 from app.models.answer import Answer
 from app.models.constants import ContentStatus, QuestionDifficulty
 from app.models.question import Question
+from question_bank_extended import build_extended_question_bank
 
 
 def _rich(text: str) -> dict:
@@ -63,7 +64,7 @@ def _q(key: str, category_id: int, body: str, correct: int | float,
 
 
 def build_question_bank(category_id: int, lesson_id: int | None = None) -> list[Question]:
-    """Build 300 stable questions across six quantitative skill families."""
+    """Build 600 stable questions across twelve quantitative skill families."""
     questions: list[Question] = []
     n = 0
 
@@ -156,4 +157,6 @@ def build_question_bank(category_id: int, lesson_id: int | None = None) -> list[
             "בעיות מילוליות", "יישום", n, 22, lesson_id,
         ))
 
+    # Extended bank: 300 more questions.
+    questions.extend(build_extended_question_bank(category_id, lesson_id))
     return questions
