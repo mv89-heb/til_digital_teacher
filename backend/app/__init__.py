@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask
+from flask import Flask, jsonify, request
 from sqlalchemy import text
 
 from app.extensions import cors, db, limiter, ma, migrate
@@ -18,31 +18,62 @@ def create_app(config_name=None):
     db.init_app(flask_app)
     migrate.init_app(flask_app, db)
 
-    # Flask-CORS treats a string as one origin. Production configuration may
-    # contain a comma-separated list, so normalize it to a real list before
-    # passing it to Flask-CORS. Without this, browser POST/preflight requests
-    # such as login can fail even though GET requests appear to work.
     configured_origins = flask_app.config.get("CORS_ORIGINS", "")
     if isinstance(configured_origins, str):
-        allowed_origins = [
+        allowed_origins = {
             origin.strip()
             for origin in configured_origins.split(",")
             if origin.strip()
-        ]
+        }
     else:
-        allowed_origins = list(configured_origins or [])
+        allowed_origins = set(configured_origins or [])
 
+    # Flask-CORS remains enabled for the normal response path. We also add a
+    # small explicit CORS layer below because Render/browser preflight failures
+    # must never depend on how Flask-CORS parses a dynamically assembled origin
+    # configuration. This is especially important for POST /api/auth/login.
     cors.init_app(
         flask_app,
-        resources={r"/api/*": {"origins": allowed_origins}},
+        resources={r"/api/.*": {"origins": list(allowed_origins)}},
         supports_credentials=False,
     )
+
+    @flask_app.before_request
+    def handle_api_preflight():
+        """Answer API CORS preflight requests explicitly and consistently."""
+        if request.method != "OPTIONS" or not request.path.startswith("/api/"):
+            return None
+
+        origin = request.headers.get("Origin")
+        if origin and origin not in allowed_origins:
+            return jsonify({"error": "CORS origin not allowed"}), 403
+
+        response = flask_app.make_response("", 204)
+        if origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Vary"] = "Origin"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+        response.headers["Access-Control-Max-Age"] = "600"
+        return response
+
+    @flask_app.after_request
+    def add_api_cors_headers(response):
+        """Ensure API responses expose CORS headers, including error responses."""
+        if not request.path.startswith("/api/"):
+            return response
+
+        origin = request.headers.get("Origin")
+        if origin and origin in allowed_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Vary"] = "Origin"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+        return response
+
     limiter.init_app(flask_app)
     ma.init_app(flask_app)
 
-    # Do not use `import app.models` here: Python binds the package name
-    # `app` in the local scope and can accidentally replace the Flask instance
-    # with the Python package module. Keep the imported package private.
     from app import models as _models  # noqa: F401
 
     register_error_handlers(flask_app)
@@ -64,11 +95,7 @@ def create_app(config_name=None):
 
     @flask_app.route("/health")
     def health_check():
-        """Liveness/readiness endpoint used by the hosting platform.
-
-        A healthy application must be able to reach its configured database;
-        otherwise returning HTTP 200 hides an outage from Render/load balancers.
-        """
+        """Liveness/readiness endpoint used by the hosting platform."""
         try:
             db.session.execute(text("SELECT 1"))
             return {"status": "healthy", "database": "ok"}, 200
