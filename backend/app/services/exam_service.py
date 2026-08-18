@@ -1,15 +1,16 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
+from app.models.answer import Answer
 from app.models.exam import Exam
+from app.models.exam_event import ExamEvent
 from app.models.exam_question_pool import ExamQuestionPool
 from app.models.exam_result import ExamResult
-from app.models.exam_session import ExamSession
 from app.models.exam_section import ExamSection
-from app.models.question import Question
+from app.models.exam_session import ExamSession
 from app.models.question_version import QuestionVersion
 from app.models.session_question import SessionQuestion
 from app.models.user_answer import UserAnswer
@@ -40,15 +41,16 @@ class ExamService:
         if existing:
             return existing
 
+        now = datetime.now(timezone.utc)
         session = ExamSession(
             user_id=user_id,
             exam_id=exam.id,
             exam_version=exam.version,
             status="IN_PROGRESS",
-            started_at=datetime.now(timezone.utc),
-            last_activity_at=datetime.now(timezone.utc),
+            started_at=now,
+            expires_at=now + timedelta(seconds=exam.duration_seconds),
+            last_activity_at=now,
         )
-        session.expires_at = session.started_at.replace() + __import__("datetime").timedelta(seconds=exam.duration_seconds)
         db.session.add(session)
         db.session.flush()
 
@@ -63,6 +65,10 @@ class ExamService:
             raise AppError("Exam has no questions", status_code=422)
 
         for index, pool in enumerate(pools):
+            version = db.session.get(QuestionVersion, pool.question_version_id)
+            if not version:
+                db.session.rollback()
+                raise AppError("Exam contains a missing question version", status_code=422)
             db.session.add(
                 SessionQuestion(
                     session_id=session.id,
@@ -71,6 +77,7 @@ class ExamService:
                     section_id=pool.exam_section_id,
                     sequence_number=index,
                     weight=pool.weight,
+                    answer_snapshot=version.answer_snapshot or [],
                 )
             )
         try:
@@ -88,31 +95,63 @@ class ExamService:
         return session
 
     @staticmethod
-    def submit_answer(user_id: int, session_id: int, session_question_id: int, answer_id: int, elapsed_ms: int | None = None) -> UserAnswer:
+    def mark_question_viewed(user_id: int, session_id: int, session_question_id: int) -> SessionQuestion:
         session = ExamService.get_session_for_user(user_id, session_id)
-        if session.status not in ACTIVE_SESSION_STATUSES:
-            raise AppError("Exam session is not active", status_code=409)
-        now = datetime.now(timezone.utc)
-        if session.expires_at and now >= session.expires_at:
-            ExamService._finalize(session, expired=True)
-            raise AppError("Exam time has expired", status_code=409)
-
+        ExamService._ensure_active(session)
         sq = db.session.get(SessionQuestion, session_question_id)
         if not sq or sq.session_id != session.id:
             raise AppError("Session question not found", status_code=404)
-        answer = __import__("app.models.answer", fromlist=["Answer"]).Answer.query.filter_by(id=answer_id, question_id=sq.question_id).first()
-        if not answer:
-            raise AppError("Answer does not belong to this question", status_code=422)
+        now = datetime.now(timezone.utc)
+        if sq.first_seen_at is None:
+            sq.first_seen_at = now
+        sq.last_seen_at = now
+        session.last_activity_at = now
+        db.session.add(
+            ExamEvent(
+                session_id=session.id,
+                session_question_id=sq.id,
+                event_type="QUESTION_VIEWED",
+                elapsed_ms=max(0, int((now - session.started_at).total_seconds() * 1000)) if session.started_at else None,
+            )
+        )
+        db.session.commit()
+        return sq
 
-        correct = bool(answer.is_correct)
+    @staticmethod
+    def submit_answer(
+        user_id: int,
+        session_id: int,
+        session_question_id: int,
+        answer_id: int,
+        elapsed_ms: int | None = None,
+    ) -> UserAnswer:
+        session = ExamService.get_session_for_user(user_id, session_id)
+        ExamService._ensure_active(session)
+        sq = db.session.get(SessionQuestion, session_question_id)
+        if not sq or sq.session_id != session.id:
+            raise AppError("Session question not found", status_code=404)
+
+        snapshot = sq.answer_snapshot or []
+        selected = next((item for item in snapshot if int(item.get("id")) == answer_id), None)
+        if selected is None:
+            # The answer must belong to the immutable session snapshot, not merely
+            # the current mutable question row.
+            raise AppError("Answer is not part of this exam question", status_code=422)
+
+        now = datetime.now(timezone.utc)
         response_time = max(0, int(elapsed_ms or 0))
+        if sq.last_seen_at:
+            response_time = max(response_time, 0)
+        response_time = min(response_time, max(0, int((session.expires_at - session.started_at).total_seconds() * 1000)))
+
         previous_final = UserAnswer.query.filter_by(session_question_id=sq.id, is_final=True).first()
         if previous_final:
             previous_final.is_final = False
 
+        correct = bool(selected.get("is_correct"))
         ua = UserAnswer(
             session_question_id=sq.id,
-            answer_id=answer.id,
+            answer_id=answer_id,
             is_final=True,
             is_correct=correct,
             answered_at=now,
@@ -125,7 +164,20 @@ class ExamService:
         sq.last_seen_at = now
         sq.total_time_ms += response_time
         session.last_activity_at = now
-        db.session.commit()
+        db.session.add(
+            ExamEvent(
+                session_id=session.id,
+                session_question_id=sq.id,
+                event_type="ANSWER_SUBMITTED",
+                elapsed_ms=response_time,
+                metadata_json={"answer_id": answer_id, "is_correct": correct},
+            )
+        )
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            raise AppError("Could not save answer", status_code=409)
         return ua
 
     @staticmethod
@@ -141,7 +193,7 @@ class ExamService:
                 return result
 
         now = datetime.now(timezone.utc)
-        session.status = "EXPIRED" if expired else "SUBMITTED"
+        session.status = "EXPIRED" if expired or (session.expires_at and now >= session.expires_at) else "SUBMITTED"
         session.submitted_at = now
         session.last_activity_at = now
 
@@ -178,11 +230,27 @@ class ExamService:
             correct_answers=correct,
             skipped_questions=skipped,
             total_time_ms=total_time,
-            metadata={"expired": expired},
+            metadata={"expired": session.status == "EXPIRED"},
         )
         db.session.add(result)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            existing = ExamResult.query.filter_by(session_id=session.id).first()
+            if existing:
+                return existing
+            raise AppError("Could not finalize exam", status_code=409)
         return result
+
+    @staticmethod
+    def _ensure_active(session: ExamSession) -> None:
+        if session.status not in ACTIVE_SESSION_STATUSES:
+            raise AppError("Exam session is not active", status_code=409)
+        now = datetime.now(timezone.utc)
+        if session.expires_at and now >= session.expires_at:
+            ExamService._finalize(session, expired=True)
+            raise AppError("Exam time has expired", status_code=409)
 
     @staticmethod
     def serialize_session(session: ExamSession) -> dict:
@@ -191,14 +259,10 @@ class ExamService:
             .order_by(SessionQuestion.sequence_number)
             .all()
         )
-        return {
-            "id": session.id,
-            "exam_id": session.exam_id,
-            "status": session.status,
-            "started_at": session.started_at.isoformat() if session.started_at else None,
-            "expires_at": session.expires_at.isoformat() if session.expires_at else None,
-            "current_question_index": session.current_question_index,
-            "questions": [
+        serialized_questions = []
+        for q in questions:
+            version = db.session.get(QuestionVersion, q.question_version_id)
+            serialized_questions.append(
                 {
                     "id": q.id,
                     "question_id": q.question_id,
@@ -207,7 +271,27 @@ class ExamService:
                     "sequence_number": q.sequence_number,
                     "status": q.status,
                     "total_time_ms": q.total_time_ms,
+                    "prompt": version.body if version else {},
+                    "visual_data": version.question_metadata.get("visual_data") if version and version.question_metadata else None,
+                    "question_type": version.question_type if version else None,
+                    "difficulty": version.difficulty if version else None,
+                    "solution": None,
+                    "answers": [
+                        {
+                            "id": item.get("id"),
+                            "answer_text": item.get("answer_text"),
+                            "order": item.get("order", 0),
+                        }
+                        for item in (q.answer_snapshot or [])
+                    ],
                 }
-                for q in questions
-            ],
+            )
+        return {
+            "id": session.id,
+            "exam_id": session.exam_id,
+            "status": session.status,
+            "started_at": session.started_at.isoformat() if session.started_at else None,
+            "expires_at": session.expires_at.isoformat() if session.expires_at else None,
+            "current_question_index": session.current_question_index,
+            "questions": serialized_questions,
         }
