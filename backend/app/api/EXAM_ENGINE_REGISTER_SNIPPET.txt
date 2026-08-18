@@ -1,0 +1,3 @@
+# Add to create_app() in backend/app/__init__.py
+from app.api.exam_registration import register_exam_blueprints
+register_exam_blueprints(app)

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
 
 interface User {
   id: number;
@@ -30,7 +30,12 @@ export const useAuthStore = create<AuthState>()(
         set((state) => (state.user ? { user: { ...state.user, xp_total: xpTotal } } : state)),
     }),
     {
-      name: 'auth-storage',
+      name: 'auth-session',
+      // JWT is intentionally kept in sessionStorage rather than localStorage.
+      // It is still readable by page JavaScript, but it does not survive a
+      // browser restart. A future HttpOnly-cookie migration can remove this
+      // client-side token entirely without changing the store contract.
+      storage: createJSONStorage(() => sessionStorage),
     }
   )
 )

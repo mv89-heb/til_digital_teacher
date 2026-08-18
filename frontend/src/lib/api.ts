@@ -1,10 +1,18 @@
-// frontend/src/lib/api.ts
-
 import type { Category, DashboardSummary, LessonDetail, LessonProgress, SubmitAnswerResult } from '@/types/learning';
+import { useAuthStore } from '@/store/useAuthStore';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+const API_URL = configuredApiUrl || (process.env.NODE_ENV === 'development' ? 'http://localhost:5000/api' : '');
+
+function assertApiConfiguration() {
+  if (!API_URL) {
+    throw new Error('שירות השרת אינו מוגדר. יש להגדיר NEXT_PUBLIC_API_URL.');
+  }
+}
 
 export async function fetchApi(endpoint: string, options: RequestInit = {}) {
+  assertApiConfiguration();
+
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers: {
@@ -13,7 +21,19 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
     },
   });
 
-  const data = await response.json();
+  const text = await response.text();
+  let data: any = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { error: text.slice(0, 500) };
+    }
+  }
+
+  if (response.status === 401 && typeof window !== 'undefined') {
+    useAuthStore.getState().logout();
+  }
 
   if (!response.ok) {
     throw new Error(data.error || 'משהו השתבש, אנא נסה שוב.');

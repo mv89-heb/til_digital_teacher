@@ -1,5 +1,6 @@
 from flask import Blueprint, g, jsonify, request
 
+from app.extensions import limiter
 from app.schemas.auth_schema import login_schema, register_schema
 from app.services.auth_service import AuthService
 from app.utils.decorators import jwt_required
@@ -8,6 +9,7 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 
 @auth_bp.route("/register", methods=["POST"])
+@limiter.limit("5 per minute")
 def register():
     data = register_schema.load(request.get_json() or {})
     user_data = AuthService.register_user(data["email"], data["password"])
@@ -15,6 +17,7 @@ def register():
 
 
 @auth_bp.route("/login", methods=["POST"])
+@limiter.limit("10 per minute")
 def login():
     data = login_schema.load(request.get_json() or {})
     login_data = AuthService.login_user(data["email"], data["password"])
