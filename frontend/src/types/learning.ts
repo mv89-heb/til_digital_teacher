@@ -59,31 +59,22 @@ export interface PracticeQuestionPool {
   target_difficulty: 'easy' | 'medium' | 'exam' | null;
 }
 
-export type BlockType =
-  | 'text'
-  | 'image'
-  | 'video'
-  | 'table'
-  | 'formula'
-  | 'interactive'
-  | 'embedded_question';
+export interface QuestionBankPage {
+  questions: Question[];
+  page: number;
+  per_page: number;
+  total: number;
+  total_pages: number;
+  has_next: boolean;
+  has_previous: boolean;
+}
 
+export type BlockType = 'text' | 'image' | 'video' | 'table' | 'formula' | 'interactive' | 'embedded_question';
 export type TextBlockContent = RichContent;
-export interface ImageBlockContent {
-  url: string;
-  alt?: string;
-  caption?: string;
-}
-export interface TableBlockContent {
-  headers: string[];
-  rows: (string | number)[][];
-}
-export interface FormulaBlockContent {
-  latex: string;
-}
-export interface EmbeddedQuestionBlockContent {
-  question_id: number;
-}
+export interface ImageBlockContent { url: string; alt?: string; caption?: string; }
+export interface TableBlockContent { headers: string[]; rows: (string | number)[][]; }
+export interface FormulaBlockContent { latex: string; }
+export interface EmbeddedQuestionBlockContent { question_id: number; }
 
 export interface ContentBlock {
   id: number;
@@ -91,13 +82,7 @@ export interface ContentBlock {
   section: string;
   type: BlockType;
   order: number;
-  content:
-    | TextBlockContent
-    | ImageBlockContent
-    | TableBlockContent
-    | FormulaBlockContent
-    | EmbeddedQuestionBlockContent
-    | Record<string, unknown>;
+  content: TextBlockContent | ImageBlockContent | TableBlockContent | FormulaBlockContent | EmbeddedQuestionBlockContent | Record<string, unknown>;
   metadata: Record<string, unknown>;
   question?: Question | null;
 }
@@ -116,59 +101,20 @@ export interface LessonSummary {
   total_blocks: number;
   category: { id: number; name: string; type: string };
 }
-
-export interface LessonDetail extends LessonSummary {
-  content_blocks: ContentBlock[];
-}
-
+export interface LessonDetail extends LessonSummary { content_blocks: ContentBlock[]; }
 export interface Category {
-  id: number;
-  name: string;
-  description: string | null;
-  type: string;
-  icon: string | null;
-  thumbnail_url: string | null;
-  order: number;
-  status: string;
-  lesson_count: number;
-  lessons: LessonSummary[];
+  id: number; name: string; description: string | null; type: string; icon: string | null;
+  thumbnail_url: string | null; order: number; status: string; lesson_count: number; lessons: LessonSummary[];
 }
-
 export type StudentLevelName = 'beginner' | 'basic' | 'intermediate' | 'exam_ready' | 'advanced';
-
 export interface CategoryProgress {
-  category_id: number;
-  name: string;
-  icon: string | null;
-  type: string;
-  questions_attempted: number;
-  questions_correct: number;
-  accuracy_percent: number;
-  lessons_completed: number;
-  lessons_total: number;
-  xp_earned: number;
-  level: StudentLevelName;
+  category_id: number; name: string; icon: string | null; type: string;
+  questions_attempted: number; questions_correct: number; accuracy_percent: number;
+  lessons_completed: number; lessons_total: number; xp_earned: number; level: StudentLevelName;
 }
-
-export interface LessonProgressEntry {
-  lesson_id: number;
-  title: string;
-  category_name: string;
-  last_viewed_at: string | null;
-  completed_at?: string;
-}
-
+export interface LessonProgressEntry { lesson_id: number; title: string; category_name: string; last_viewed_at: string | null; completed_at?: string; }
 export interface DashboardSummary {
-  xp_total: number;
-  categories: CategoryProgress[];
-  in_progress_lessons: LessonProgressEntry[];
-  completed_lessons: LessonProgressEntry[];
-  continue_learning: LessonProgressEntry | null;
-  stats: {
-    total_questions_attempted: number;
-    total_questions_correct: number;
-    overall_accuracy_percent: number;
-    total_lessons_completed: number;
-    total_lessons_available: number;
-  };
+  xp_total: number; categories: CategoryProgress[]; in_progress_lessons: LessonProgressEntry[];
+  completed_lessons: LessonProgressEntry[]; continue_learning: LessonProgressEntry | null;
+  stats: { total_questions_attempted: number; total_questions_correct: number; overall_accuracy_percent: number; total_lessons_completed: number; total_lessons_available: number; };
 }
