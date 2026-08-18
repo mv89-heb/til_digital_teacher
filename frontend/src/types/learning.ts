@@ -9,8 +9,6 @@ export interface Answer {
   question_id: number;
   answer_text: string;
   order: number;
-  // Present only in admin contexts (never on the public /learning/* fetch —
-  // the server decides correctness via POST /questions/<id>/submit).
   is_correct?: boolean;
   explanation_if_selected?: RichContent | null;
 }
@@ -41,10 +39,24 @@ export interface Question {
   difficulty: 'easy' | 'medium' | 'exam';
   status: string;
   body: RichContent;
-  solution_text: RichContent | null; // null on the public fetch until answered
+  solution_text: RichContent | null;
   recommended_time_seconds: number | null;
   metadata: Record<string, unknown>;
   answers: Answer[];
+  bank_key?: string | null;
+  main_category?: string | null;
+  subcategory?: string | null;
+  skill?: string | null;
+  difficulty_level?: number | null;
+  tags?: string[];
+  visual_data?: Record<string, unknown> | string | null;
+}
+
+export interface PracticeQuestionPool {
+  questions: Question[];
+  count: number;
+  mode: 'adaptive' | 'all';
+  target_difficulty: 'easy' | 'medium' | 'exam' | null;
 }
 
 export type BlockType =
@@ -87,7 +99,7 @@ export interface ContentBlock {
     | EmbeddedQuestionBlockContent
     | Record<string, unknown>;
   metadata: Record<string, unknown>;
-  question?: Question | null; // present (and resolved) only on embedded_question blocks
+  question?: Question | null;
 }
 
 export interface LessonSummary {
