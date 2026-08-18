@@ -22,6 +22,14 @@ def get_exam_session(session_id):
     return jsonify({"session": ExamService.serialize_session(session)}), 200
 
 
+@exam_bp.route("/sessions/<int:session_id>/advance-section", methods=["POST"])
+@jwt_required
+def advance_exam_section(session_id):
+    """Advance exactly one section after the server-side section timer expires."""
+    session = ExamService.advance_section(g.current_user["id"], session_id)
+    return jsonify({"session": ExamService.serialize_session(session)}), 200
+
+
 @exam_bp.route("/sessions/<int:session_id>/questions/<int:session_question_id>/view", methods=["POST"])
 @jwt_required
 def view_question(session_id, session_question_id):
@@ -45,8 +53,8 @@ def submit_answer(session_id):
     except (KeyError, TypeError, ValueError):
         return jsonify({"error": "session_question_id and answer_id are required integers"}), 400
 
-    # elapsed_ms is intentionally ignored. The server calculates response
-    # time from QUESTION_VIEWED -> ANSWER_SUBMITTED timestamps.
+    # elapsed_ms is intentionally ignored by the server for authoritative scoring.
+    # ExamAnswerService / ExamService derive timing from server-side events.
     answer = ExamAnswerService.submit(
         g.current_user["id"],
         session_id,
