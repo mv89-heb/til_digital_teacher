@@ -6,6 +6,7 @@ from app.services.practice_service import PracticeService
 from app.services.progress_service import ProgressService
 from app.services.teacher_knowledge_service import TeacherKnowledgeService
 from app.services.teacher_memory_service import TeacherMemoryService
+from app.services.teacher_profile_service import TeacherProfileService
 from app.utils.decorators import admin_required, jwt_required
 
 learning_bp = Blueprint("learning", __name__, url_prefix="/api/learning")
@@ -42,6 +43,12 @@ def get_question_bank():
     ), 200
 
 
+@learning_bp.route("/teacher/profile", methods=["GET"])
+@jwt_required
+def teacher_profile():
+    return jsonify({"profile": TeacherProfileService.build(g.current_user["id"])}), 200
+
+
 @learning_bp.route("/teacher/teach", methods=["POST"])
 @jwt_required
 def teacher_teach():
@@ -56,11 +63,8 @@ def teacher_teach():
     if not query and question_id is None:
         return jsonify({"error": "query or question_id is required"}), 400
 
-    result = TeacherKnowledgeService.teach(
-        query,
-        question_id=question_id,
-        mode=mode,
-    )
+    result = TeacherKnowledgeService.teach(query, question_id=question_id, mode=mode)
+    profile = TeacherProfileService.build(g.current_user["id"])
 
     topic = result.get("topic")
     question = result.get("question") or {}
@@ -74,16 +78,27 @@ def teacher_teach():
         question_id=question_id,
         limit=8,
     )
-    result["answer"] = TeacherMemoryService.apply_to_local_answer(
+
+    answer = TeacherMemoryService.apply_to_local_answer(
         result.get("answer") or "",
         memory_items,
         mode=mode,
     )
+
+    focus = profile.get("focus")
+    if focus and not topic and mode in {"learn", "practice"}:
+        answer += f"\n\nלפי התרגול האחרון שלך, כדאי לתת כרגע דגש נוסף על: {focus}."
+    if mode == "mistake" and profile.get("weaknesses"):
+        weakest = profile["weaknesses"][0]
+        answer += f"\n\nנקודת חולשה שזוהתה בתרגול: {weakest['skill']} ({weakest['accuracy']}% הצלחה). ננתח את מקור הטעות לפני שנעבור הלאה."
+
+    result["answer"] = answer
     result["memory"] = {
         "applied": bool(memory_items),
         "count": len(memory_items),
         "items": TeacherMemoryService.context(memory_items),
     }
+    result["student_profile"] = profile
     TeacherMemoryService.mark_used(memory_items)
     return jsonify(result), 200
 
@@ -108,17 +123,16 @@ def teacher_feedback():
 @learning_bp.route("/teacher/feedback", methods=["GET"])
 @admin_required
 def list_teacher_feedback():
+    from app.models.teacher_feedback import TeacherFeedback
+
     status = request.args.get("status", "pending")
-    query = TeacherMemoryService.retrieve(query="", limit=20)
-    if status != "approved":
-        from app.models.teacher_feedback import TeacherFeedback
-        query = (
-            TeacherFeedback.query
-            .filter(TeacherFeedback.status == status)
-            .order_by(TeacherFeedback.created_at.desc())
-            .limit(50)
-            .all()
-        )
+    query = (
+        TeacherFeedback.query
+        .filter(TeacherFeedback.status == status)
+        .order_by(TeacherFeedback.created_at.desc())
+        .limit(50)
+        .all()
+    )
     return jsonify({"feedback": [item.to_dict() for item in query]}), 200
 
 
