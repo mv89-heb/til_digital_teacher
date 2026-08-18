@@ -21,5 +21,6 @@ class SessionQuestion(db.Model, TimestampMixin):
     last_seen_at = db.Column(db.DateTime(timezone=True))
     answered_at = db.Column(db.DateTime(timezone=True))
     total_time_ms = db.Column(db.BigInteger, nullable=False, default=0)
+    answer_snapshot = db.Column(db.JSON, nullable=False, default=list)
 
     session = db.relationship("ExamSession", back_populates="questions")
