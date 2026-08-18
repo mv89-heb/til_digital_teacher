@@ -20,16 +20,34 @@ def upgrade():
         "question_versions",
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.execute(sa.text("UPDATE question_versions SET updated_at = created_at WHERE updated_at IS NULL"))
-    op.alter_column("question_versions", "updated_at", nullable=False, server_default=sa.func.now())
+    op.execute(
+        sa.text(
+            "UPDATE question_versions "
+            "SET updated_at = created_at WHERE updated_at IS NULL"
+        )
+    )
+    op.alter_column(
+        "question_versions",
+        "updated_at",
+        nullable=False,
+        server_default=sa.func.now(),
+    )
 
     # Freeze answer correctness/content together with each question version.
     op.add_column(
         "question_versions",
-        sa.Column("answer_snapshot", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
+        sa.Column(
+            "answer_snapshot",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
     )
 
     # Backfill one immutable version for every existing question.
+    # questions.question_metadata is PostgreSQL JSON while the historical
+    # snapshot column is JSONB. Cast explicitly before COALESCE so PostgreSQL
+    # never has to reconcile JSON and JSONB in the same expression.
     op.execute(
         sa.text(
             """
@@ -41,7 +59,7 @@ def upgrade():
             SELECT
                 q.id, 1, q.category_id, q.question_type, q.difficulty, q.status,
                 q.body, q.solution_text,
-                COALESCE(q.question_metadata, '{}'::jsonb),
+                COALESCE(q.question_metadata::jsonb, '{}'::jsonb),
                 COALESCE(
                     (
                         SELECT jsonb_agg(
@@ -70,7 +88,12 @@ def upgrade():
     # Preserve the exact answer set used by every session question.
     op.add_column(
         "session_questions",
-        sa.Column("answer_snapshot", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
+        sa.Column(
+            "answer_snapshot",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
     )
     op.execute(
         sa.text(
