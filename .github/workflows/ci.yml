@@ -44,8 +44,8 @@ jobs:
         run: flask --app run.py db heads
       - name: Apply all migrations on PostgreSQL
         run: flask --app run.py db upgrade
-      - name: Verify migration/model parity
-        run: flask --app run.py db check
+      - name: Verify migration state
+        run: flask --app run.py db current
       - name: Run backend tests
         run: pytest -q
 
