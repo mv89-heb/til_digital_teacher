@@ -32,18 +32,25 @@ class TestingConfig(Config):
 
 class ProductionConfig(Config):
     DEBUG = False
-    # Keep JWT_SECRET as the documented/preferred name, while accepting
-    # SECRET_KEY for backwards compatibility with an existing Render service.
     SECRET_KEY = require_production_secret(
         os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY"),
         "JWT_SECRET (or SECRET_KEY)",
     )
-    # The deployed frontend is hosted on this Render origin. CORS_ORIGINS can
-    # still override this value in Render for custom domains or additional
-    # trusted frontends.
-    CORS_ORIGINS = os.getenv(
-        "CORS_ORIGINS",
+    # Accept a comma-separated list, while always allowing the deployed
+    # frontend origins used by this application. This prevents a stale or
+    # incomplete Render environment variable from silently breaking browser
+    # POST requests such as login.
+    _configured_cors = os.getenv("CORS_ORIGINS", "")
+    _frontend_origins = (
         "https://til-digital-teacher-0ryl.onrender.com",
+        "https://til-digital-teacher.onrender.com",
+    )
+    CORS_ORIGINS = ",".join(
+        dict.fromkeys(
+            origin.strip()
+            for origin in (_configured_cors.split(",") + list(_frontend_origins))
+            if origin.strip()
+        )
     )
 
 
