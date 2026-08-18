@@ -34,33 +34,17 @@ TOPIC_ALIASES = {
 FUNDAMENTAL_PLAYBOOKS = {
     "שברים": {
         "summary": "שבר מתאר חלק מתוך שלם. המונה מייצג כמה חלקים יש, והמכנה לכמה חלקים שווים השלם חולק.",
-        "steps": [
-            "זהה אם צריך לחבר, לחסר, לכפול, לחלק או להשוות שברים.",
-            "בחיבור ובחיסור: הבא למכנה משותף, ואז חבר או חסר מונים.",
-            "בכפל: כופלים מונה במונה ומכנה במכנה, ומצמצמים בסוף.",
-            "בחילוק: הופכים את השבר השני וכופלים.",
-            "בדוק אם אפשר לצמצם והאם התוצאה הגיונית בגודלה.",
-        ],
-        "mistakes": [
-            "בחיבור שברים לא מחברים מכנים.",
-            "לא הופכים את שני השברים בחילוק; הופכים רק את המחלק.",
-            "לא מצמצמים חלק מהביטוי באופן שפוגע בשוויון.",
-        ],
+        "steps": ["זהה אם צריך לחבר, לחסר, לכפול, לחלק או להשוות שברים.", "בחיבור ובחיסור: הבא למכנה משותף, ואז חבר או חסר מונים.", "בכפל: כופלים מונה במונה ומכנה במכנה, ומצמצמים בסוף.", "בחילוק: הופכים את השבר השני וכופלים.", "בדוק אם אפשר לצמצם והאם התוצאה הגיונית בגודלה."],
+        "mistakes": ["בחיבור שברים לא מחברים מכנים.", "לא הופכים את שני השברים בחילוק; הופכים רק את המחלק.", "לא מצמצמים חלק מהביטוי באופן שפוגע בשוויון."],
     },
     "אחוזים": {
         "summary": "אחוז הוא חלק מתוך 100. כדי למצוא x% ממספר, מחשבים את המספר כפול x חלקי 100.",
-        "steps": [
-            "זהה אם מחפשים את החלק, את האחוז או את השלם.",
-            "המר אחוז לשבר מתוך 100 או לעשרוני.",
-            "בבעיות שינוי השתמש באחוז השינוי ביחס לערך ההתחלתי.",
-            "בדוק האם מדובר בהנחה, התייקרות או אחוז מתוך אחוז.",
-        ],
-        "mistakes": [
-            "בלבול בין אחוז מתוך המקור לאחוז מתוך התוצאה.",
-            "שימוש בערך הסופי במקום בערך ההתחלתי בבדיקת שינוי אחוזי.",
-        ],
+        "steps": ["זהה אם מחפשים את החלק, את האחוז או את השלם.", "המר אחוז לשבר מתוך 100 או לעשרוני.", "בבעיות שינוי השתמש באחוז השינוי ביחס לערך ההתחלתי.", "בדוק האם מדובר בהנחה, התייקרות או אחוז מתוך אחוז."],
+        "mistakes": ["בלבול בין אחוז מתוך המקור לאחוז מתוך התוצאה.", "שימוש בערך הסופי במקום בערך ההתחלתי בבדיקת שינוי אחוזי."],
     },
 }
+
+VALID_MODES = {"learn", "guided", "practice", "mistake"}
 
 
 @dataclass
@@ -106,55 +90,23 @@ class TeacherKnowledgeService:
     @staticmethod
     def _question_payload(question: Question) -> dict:
         metadata = question.question_metadata or {}
-        answers = [
-            {"id": answer.id, "text": answer.answer_text}
-            for answer in sorted(question.answers, key=lambda answer: answer.order)
-        ]
-        return {
-            "id": question.id,
-            "bank_key": metadata.get("bank_key"),
-            "body": TeacherKnowledgeService._clean(question.body),
-            "solution_text": None,
-            "main_category": metadata.get("main_category"),
-            "subcategory": metadata.get("subcategory"),
-            "skill": metadata.get("skill"),
-            "difficulty_level": metadata.get("difficulty_level"),
-            "question_type": metadata.get("question_type"),
-            "tags": metadata.get("tags", []),
-            "visual_data": metadata.get("visual_data") or metadata.get("visual"),
-            "answers": answers,
-        }
+        answers = [{"id": answer.id, "text": answer.answer_text} for answer in sorted(question.answers, key=lambda answer: answer.order)]
+        return {"id": question.id, "bank_key": metadata.get("bank_key"), "body": TeacherKnowledgeService._clean(question.body), "solution_text": None, "main_category": metadata.get("main_category"), "subcategory": metadata.get("subcategory"), "skill": metadata.get("skill"), "difficulty_level": metadata.get("difficulty_level"), "question_type": metadata.get("question_type"), "tags": metadata.get("tags", []), "visual_data": metadata.get("visual_data") or metadata.get("visual"), "answers": answers}
 
     @classmethod
     def build_context(cls, *, query: str = "", question_id: int | None = None, limit: int = 8) -> TeacherContext:
         tokens = cls._tokens(query)
         topic = cls.resolve_topic(query)
-
-        categories = [
-            {
-                "id": row.id,
-                "name": row.name,
-                "slug": cls._normalize(row.name).replace(" ", "-"),
-                "parent_id": row.parent_id,
-            }
-            for row in Category.query.order_by(Category.parent_id.asc(), Category.order.asc(), Category.id.asc()).all()
-        ]
+        categories = [{"id": row.id, "name": row.name, "slug": cls._normalize(row.name).replace(" ", "-"), "parent_id": row.parent_id} for row in Category.query.order_by(Category.parent_id.asc(), Category.order.asc(), Category.id.asc()).all()]
 
         lessons = []
         lesson_query = Lesson.query.filter(Lesson.status == ContentStatus.PUBLISHED)
         if topic:
             topic_tokens = cls._tokens(topic)
             if topic_tokens:
-                lesson_query = lesson_query.filter(
-                    or_(*[Lesson.title.ilike(f"%{token}%") for token in topic_tokens[:3]])
-                )
+                lesson_query = lesson_query.filter(or_(*[Lesson.title.ilike(f"%{token}%") for token in topic_tokens[:3]]))
         for lesson in lesson_query.order_by(Lesson.category_id.asc(), Lesson.order.asc(), Lesson.id.asc()).limit(30).all():
-            lessons.append({
-                "id": lesson.id,
-                "title": lesson.title,
-                "category_id": lesson.category_id,
-                "slug": lesson.slug,
-            })
+            lessons.append({"id": lesson.id, "title": lesson.title, "category_id": lesson.category_id, "slug": lesson.slug})
 
         question_query = Question.query.filter(Question.status == ContentStatus.PUBLISHED)
         if question_id is not None:
@@ -172,36 +124,59 @@ class TeacherKnowledgeService:
 
         rows = question_query.limit(max(1, min(limit, 20))).all()
         questions = [cls._question_payload(question) for question in rows]
-
         total_questions = Question.query.filter(Question.status == ContentStatus.PUBLISHED).count()
         total_lessons = Lesson.query.filter(Lesson.status == ContentStatus.PUBLISHED).count()
         return TeacherContext(categories, lessons, questions, total_questions, total_lessons)
 
     @classmethod
-    def teach(cls, query: str, *, question_id: int | None = None, mode: str = "learn") -> dict:
-        topic = cls.resolve_topic(query)
-        context = cls.build_context(query=query, question_id=question_id)
+    def _base_answer(cls, topic: str | None, matched_question: dict | None, matched_lesson: dict | None) -> tuple[str, dict]:
         playbook = FUNDAMENTAL_PLAYBOOKS.get(topic or "")
-        matched_question = context.questions[0] if context.questions else None
-        matched_lesson = context.lessons[0] if context.lessons else None
-
         if playbook:
-            answer = playbook["summary"]
-            answer += "\n\nשלבי פתרון:\n" + "\n".join(f"{i + 1}. {step}" for i, step in enumerate(playbook["steps"]))
+            answer = playbook["summary"] + "\n\nשלבי פתרון:\n" + "\n".join(f"{i + 1}. {step}" for i, step in enumerate(playbook["steps"]))
             answer += "\n\nטעויות נפוצות:\n" + "\n".join(f"• {item}" for item in playbook["mistakes"])
-            if matched_question:
-                answer += f"\n\nמצאתי גם שאלה רלוונטית במאגר: #{matched_question['id']}"
         elif matched_question:
             topic_label = matched_question.get("subcategory") or matched_question.get("skill") or matched_question.get("main_category") or "כללי"
-            answer = (
-                f"מצאתי שאלה רלוונטית בנושא {topic_label}.\n\n"
-                f"{matched_question['body']}\n\n"
-                "כדי ללמוד אותה נכון: קודם מזהים מה מבקשים, אחר כך מזהים את הכלל, ולבסוף בודקים את האפשרויות מול הכלל."
-            )
+            answer = f"מצאתי שאלה רלוונטית בנושא {topic_label}.\n\n{matched_question['body']}\n\nכדי ללמוד אותה נכון: קודם מזהים מה מבקשים, אחר כך מזהים את הכלל, ולבסוף בודקים את האפשרויות מול הכלל."
         elif matched_lesson:
             answer = f"מצאתי שיעור מתאים: {matched_lesson['title']}. אפשר ללמוד אותו לפי הסדר שבמרכז הלמידה, ולאחר מכן לעבור לתרגול מהמאגר."
         else:
             answer = "לא מצאתי התאמה ישירה. אפשר לנסות נושא מדויק יותר, למשל: 'למד אותי שברים', 'איך פותרים אנלוגיות', 'הסבר מטריצות', או לשלוח שאלה ספציפית."
+        return answer, playbook or {}
+
+    @classmethod
+    def teach(cls, query: str, *, question_id: int | None = None, mode: str = "learn") -> dict:
+        mode = mode if mode in VALID_MODES else "learn"
+        topic = cls.resolve_topic(query)
+        context = cls.build_context(query=query, question_id=question_id)
+        matched_question = context.questions[0] if context.questions else None
+        matched_lesson = context.lessons[0] if context.lessons else None
+        base, playbook = cls._base_answer(topic, matched_question, matched_lesson)
+
+        if mode == "guided":
+            if matched_question:
+                answer = (
+                    f"נפתור יחד, בלי לקפוץ מיד לפתרון.\n\n{matched_question['body']}\n\n"
+                    "שלב 1: מה בדיוק מבקשים למצוא?\n"
+                    "שלב 2: איזה כלל או קשר צריך לזהות?\n"
+                    "שלב 3: בדוק את האפשרויות לפי הכלל.\n\n"
+                    "עצור כאן ונסה לנסח את הצעד הבא בעצמך."
+                )
+            else:
+                answer = base + "\n\nבמצב מודרך לא נקפוץ לפתרון: נתחיל מזיהוי הנתונים והכלל לפני המסקנה."
+        elif mode == "practice":
+            if matched_question:
+                answer = f"מצב תרגול — הנה שאלה אחת:\n\n{matched_question['body']}\n\nבחר תשובה ושלח אותה לבדיקה. כרגע לא אציג פתרון או רמז שמסגיר את התשובה."
+            else:
+                answer = "מצב תרגול דורש שאלה זמינה. נסה לבחור נושא או בקש ממני תרגיל."
+        elif mode == "mistake":
+            if matched_question:
+                answer = f"מצב ניתוח טעות — נבדוק את דרך החשיבה, לא רק את התוצאה.\n\nהשאלה:\n{matched_question['body']}\n\nבדיקה:\n1. מה נתון?\n2. מה ניסית לעשות?\n3. איזה כלל הפעלת?\n4. באיזה שלב התוצאה הפסיקה להתאים לנתונים?"
+            elif playbook:
+                answer = playbook["summary"] + "\n\nבמצב ניתוח טעות התמקד במיוחד בטעויות הנפוצות:\n" + "\n".join(f"• {item}" for item in playbook["mistakes"])
+            else:
+                answer = base + "\n\nבמצב ניתוח טעות נאתר קודם את נקודת הכשל ורק אחר כך ננסח את הפתרון הנכון."
+        else:
+            answer = base
 
         return {
             "answer": answer,
