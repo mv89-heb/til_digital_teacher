@@ -1,4 +1,5 @@
 import type { Category, DashboardSummary, LessonDetail, LessonProgress, PracticeQuestionPool, SubmitAnswerResult } from '@/types/learning';
+import type { ExamSession, ExamAnswerResult, ExamResult } from '@/types/exam';
 import { useAuthStore } from '@/store/useAuthStore';
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
@@ -57,4 +58,36 @@ export async function getLessonProgress(lessonId: number | string, token: string
 
 export async function getDashboard(token: string): Promise<DashboardSummary> {
   return fetchApi('/learning/dashboard', { headers: authHeaders(token) });
+}
+
+export async function startExam(examId: number, token: string): Promise<ExamSession> {
+  const data = await fetchApi(`/exams/${examId}/sessions`, { method: 'POST', headers: authHeaders(token) });
+  return data.session;
+}
+
+export async function getExamSession(sessionId: number, token: string): Promise<ExamSession> {
+  const data = await fetchApi(`/exams/sessions/${sessionId}`, { headers: authHeaders(token) });
+  return data.session;
+}
+
+export async function advanceExamSection(sessionId: number, token: string): Promise<ExamSession> {
+  const data = await fetchApi(`/exams/sessions/${sessionId}/advance-section`, { method: 'POST', headers: authHeaders(token) });
+  return data.session;
+}
+
+export async function markExamQuestionViewed(sessionId: number, sessionQuestionId: number, token: string) {
+  return fetchApi(`/exams/sessions/${sessionId}/questions/${sessionQuestionId}/view`, { method: 'POST', headers: authHeaders(token) });
+}
+
+export async function submitExamAnswer(sessionId: number, sessionQuestionId: number, answerId: number, elapsedMs: number, token: string): Promise<ExamAnswerResult> {
+  const data = await fetchApi(`/exams/sessions/${sessionId}/answers`, {
+    method: 'POST', headers: authHeaders(token),
+    body: JSON.stringify({ session_question_id: sessionQuestionId, answer_id: answerId, elapsed_ms: elapsedMs }),
+  });
+  return data.answer;
+}
+
+export async function submitExam(sessionId: number, token: string): Promise<ExamResult> {
+  const data = await fetchApi(`/exams/sessions/${sessionId}/submit`, { method: 'POST', headers: authHeaders(token) });
+  return data.result;
 }
