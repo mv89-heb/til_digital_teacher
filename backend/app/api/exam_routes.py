@@ -21,13 +21,6 @@ def get_exam_session(session_id):
     return jsonify({"session": ExamService.serialize_session(session)}), 200
 
 
-@exam_bp.route("/sessions/<int:session_id>/advance-section", methods=["POST"])
-@jwt_required
-def advance_section(session_id):
-    session = ExamService.advance_section(g.current_user["id"], session_id)
-    return jsonify({"session": ExamService.serialize_session(session)}), 200
-
-
 @exam_bp.route("/sessions/<int:session_id>/questions/<int:session_question_id>/view", methods=["POST"])
 @jwt_required
 def view_question(session_id, session_question_id):
