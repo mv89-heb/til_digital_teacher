@@ -3,6 +3,7 @@ from flask import Blueprint, g, jsonify, request
 from app.schemas.practice_schema import submit_answer_schema
 from app.services.learning_service import LearningService
 from app.services.practice_service import PracticeService
+from app.services.progress_service import ProgressService
 from app.utils.decorators import jwt_required
 
 learning_bp = Blueprint("learning", __name__, url_prefix="/api/learning")
@@ -11,6 +12,12 @@ learning_bp = Blueprint("learning", __name__, url_prefix="/api/learning")
 @learning_bp.route("/categories", methods=["GET"])
 def get_categories():
     return jsonify({"categories": LearningService.get_categories_overview()}), 200
+
+
+@learning_bp.route("/dashboard", methods=["GET"])
+@jwt_required
+def get_dashboard():
+    return jsonify(ProgressService.get_dashboard_summary(g.current_user["id"])), 200
 
 
 @learning_bp.route("/lessons/<int:lesson_id>", methods=["GET"])
@@ -37,5 +44,5 @@ def complete_lesson(lesson_id):
 @learning_bp.route("/lessons/<int:lesson_id>/progress", methods=["GET"])
 @jwt_required
 def get_lesson_progress(lesson_id):
-    progress = PracticeService.get_lesson_progress(g.current_user["id"], lesson_id)
+    progress = PracticeService.get_lesson_progress(lesson_id, g.current_user["id"])
     return jsonify({"progress": progress}), 200
