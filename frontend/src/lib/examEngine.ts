@@ -13,7 +13,7 @@ export type ExamEvent =
   | { type: 'HYDRATE'; session: ExamSession; clientNowMs: number }
   | { type: 'SELECT_ANSWER'; questionId: number; answerId: number }
   | { type: 'VIEWED'; questionId: number }
-  | { type: 'NEXT_QUESTION' }
+  | { type: 'NEXT_QUESTION'; nextQuestionIndex: number }
   | { type: 'SECTION_EXPIRED' }
   | { type: 'SECTION_SYNCED'; session: ExamSession; clientNowMs: number }
   | { type: 'SUBMIT_STARTED' }
@@ -50,11 +50,8 @@ export function reduceExamState(state: ExamClientState, event: ExamEvent): ExamC
       return state.viewedQuestionIds.includes(event.questionId)
         ? state
         : { ...state, viewedQuestionIds: [...state.viewedQuestionIds, event.questionId] };
-    case 'NEXT_QUESTION': {
-      const questions = eventQuestionsForSection(state, state.currentSectionIndex, undefined);
-      const next = questions.find((q) => q.sequence_number > state.currentQuestionIndex);
-      return next ? { ...state, currentQuestionIndex: next.sequence_number } : state;
-    }
+    case 'NEXT_QUESTION':
+      return { ...state, currentQuestionIndex: event.nextQuestionIndex };
     case 'SECTION_EXPIRED':
       return { ...state, phase: 'SECTION_EXPIRED' };
     case 'SECTION_SYNCED':
@@ -89,10 +86,4 @@ function firstQuestionForSection(session: ExamSession, sectionIndex: number): Ex
   return session.questions
     .filter((q) => q.section_id === sectionId)
     .sort((a, b) => a.sequence_number - b.sequence_number)[0];
-}
-
-function eventQuestionsForSection(state: ExamClientState, sectionIndex: number, session?: ExamSession): ExamQuestion[] {
-  if (!session) return [];
-  const sectionId = session.sections[sectionIndex]?.id;
-  return session.questions.filter((q) => q.section_id === sectionId).sort((a, b) => a.sequence_number - b.sequence_number);
 }
