@@ -26,6 +26,20 @@ def get_lesson(lesson_id):
     return jsonify({"lesson": lesson}), 200
 
 
+@learning_bp.route("/question-bank", methods=["GET"])
+@jwt_required
+def get_question_bank():
+    return jsonify(
+        PracticeService.list_question_bank(
+            category_id=request.args.get("category_id", type=int),
+            difficulty=request.args.get("difficulty"),
+            page=request.args.get("page", default=1, type=int),
+            per_page=request.args.get("per_page", default=24, type=int),
+            search=request.args.get("search"),
+        )
+    ), 200
+
+
 @learning_bp.route("/questions/<int:question_id>/submit", methods=["POST"])
 @jwt_required
 def submit_answer(question_id):
