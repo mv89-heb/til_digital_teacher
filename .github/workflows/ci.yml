@@ -11,9 +11,26 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: til_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d til_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     defaults:
       run:
         working-directory: backend
+    env:
+      FLASK_ENV: testing
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/til_ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,12 +41,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Verify Alembic graph
-        env:
-          FLASK_ENV: testing
-        run: alembic heads
+        run: flask --app run.py db heads
+      - name: Apply all migrations on PostgreSQL
+        run: flask --app run.py db upgrade
+      - name: Verify migration/model parity
+        run: flask --app run.py db check
       - name: Run backend tests
-        env:
-          FLASK_ENV: testing
         run: pytest -q
 
   frontend:
@@ -51,4 +68,6 @@ jobs:
       - name: Test
         run: npm test
       - name: Build
+        env:
+          NEXT_PUBLIC_API_URL: https://til-digital-teacher-0ryl.onrender.com/api
         run: npm run build
