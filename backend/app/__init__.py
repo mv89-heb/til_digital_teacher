@@ -2,7 +2,7 @@ import os
 
 from flask import Flask
 
-from app.extensions import cors, db, ma, migrate
+from app.extensions import cors, db, limiter, ma, migrate
 from app.utils.error_handlers import register_error_handlers
 
 
@@ -16,23 +16,16 @@ def create_app(config_name=None):
 
     db.init_app(app)
     migrate.init_app(app, db)
-    cors.init_app(app)
+    cors.init_app(
+        app,
+        resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}},
+        supports_credentials=False,
+    )
+    limiter.init_app(app)
     ma.init_app(app)
 
-    # Import models so Flask-Migrate can see them when generating migrations.
-    from app.models.answer import Answer  # noqa: F401
-    from app.models.audit_log import AuditLog  # noqa: F401
-    from app.models.category import Category  # noqa: F401
-    from app.models.lesson import Lesson  # noqa: F401
-    from app.models.lesson_content import LessonContent  # noqa: F401
-    from app.models.practice_attempt import PracticeAttempt  # noqa: F401
-    from app.models.question import Question  # noqa: F401
-    from app.models.solution_strategy import SolutionStrategy  # noqa: F401
-    from app.models.student_level import StudentLevel  # noqa: F401
-    from app.models.user import User  # noqa: F401
-    from app.models.user_lesson_progress import UserLessonProgress  # noqa: F401
-    from app.models.user_progress import UserProgress  # noqa: F401
-    from app.models.xp_transaction import XPTransaction  # noqa: F401
+    # Import every model so Flask-Migrate sees the complete metadata.
+    import app.models  # noqa: F401
 
     register_error_handlers(app)
 
@@ -47,6 +40,10 @@ def create_app(config_name=None):
     app.register_blueprint(admin_questions_bp)
     app.register_blueprint(learning_bp)
     app.register_blueprint(practice_bp)
+
+    # Advanced exam engine and content-integrity APIs.
+    from app.api.exam_registration import register_exam_blueprints
+    register_exam_blueprints(app)
 
     @app.route("/health")
     def health_check():
