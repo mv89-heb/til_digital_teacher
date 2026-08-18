@@ -38,7 +38,13 @@ class ProductionConfig(Config):
         os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY"),
         "JWT_SECRET (or SECRET_KEY)",
     )
-    CORS_ORIGINS = os.getenv("CORS_ORIGINS", "")
+    # The deployed frontend is hosted on this Render origin. CORS_ORIGINS can
+    # still override this value in Render for custom domains or additional
+    # trusted frontends.
+    CORS_ORIGINS = os.getenv(
+        "CORS_ORIGINS",
+        "https://til-digital-teacher-0ryl.onrender.com",
+    )
 
 
 config_by_name = {
