@@ -1,14 +1,15 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Brain, CheckCircle2, HelpCircle, Lightbulb, RotateCcw, Search, Send, Sparkles, Target, Trophy, BookOpen } from 'lucide-react';
+import { Brain, CheckCircle2, HelpCircle, Lightbulb, RotateCcw, Search, Send, Sparkles, Target, Trophy, BookOpen, MessageSquareWarning } from 'lucide-react';
 import Card from '@/components/ui/Card';
-import { getCategories, getTeacherLesson } from '@/lib/api';
+import { getCategories, getTeacherLesson, submitTeacherFeedback } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
 import type { Category } from '@/types/learning';
 
 type Message = { role: 'user' | 'assistant'; text: string };
 type TeacherMode = 'learn' | 'guided' | 'practice' | 'mistake';
+type TeacherProfile = { attempts: number; accuracy: number | null; focus: string | null; strengths: { skill: string; accuracy: number }[]; weaknesses: { skill: string; accuracy: number }[] };
 
 const QUICK_PROMPTS = [
   { label: 'למד אותי נושא', icon: BookOpen, prompt: 'למד אותי את הנושא הזה מהבסיס, עם דוגמאות ותרגול.' },
@@ -37,6 +38,11 @@ export default function AITeacherPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [stats, setStats] = useState({ categories: 0, lessons: 0, questions: 0 });
+  const [profile, setProfile] = useState<TeacherProfile | null>(null);
+  const [feedbackFor, setFeedbackFor] = useState<number | null>(null);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState<number[]>([]);
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', text: 'שלום! אני המורה האישי שלך. אני עובד ללא API חיצוני, ומכיר את חומרי הלימוד ואת מאגר השאלות דרך השרת. אפשר לבקש ממני ללמד נושא, להסביר שאלה, לתת רמז, לתרגל או לנתח טעות.' },
   ]);
@@ -88,12 +94,41 @@ export default function AITeacherPage() {
       const result = await getTeacherLesson(prompt, token, { mode, questionId: selectedQuestionId ?? undefined });
       const text = result?.answer || 'לא הצלחתי לבנות תשובה כרגע.';
       if (result?.stats) setStats((current) => ({ ...current, questions: result.stats.total_questions, lessons: result.stats.total_lessons }));
+      if (result?.student_profile) setProfile(result.student_profile);
       setMessages((current) => [...current, { role: 'assistant', text }]);
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : 'הבקשה למורה נכשלה.';
       setMessages((current) => [...current, { role: 'assistant', text: `לא הצלחתי להשלים את ההסבר כרגע. ${message}` }]);
     } finally {
       setSending(false);
+    }
+  };
+
+  const reportFeedback = async (messageIndex: number) => {
+    const correction = feedbackText.trim();
+    if (!token || !correction || feedbackSaving) return;
+    const previousUserMessage = [...messages.slice(0, messageIndex)].reverse().find((message) => message.role === 'user');
+    const originalAnswer = messages[messageIndex]?.text || '';
+    setFeedbackSaving(true);
+    try {
+      await submitTeacherFeedback(token, {
+        student_query: previousUserMessage?.text || 'משוב כללי למורה',
+        feedback: correction,
+        correction,
+        original_answer: originalAnswer,
+        question_id: selectedQuestionId,
+        topic: selectedQuestion ? lessonTopic(selectedQuestion) : null,
+        subcategory: selectedQuestion?.subcategory || null,
+        skill: selectedQuestion?.skill || null,
+        severity: 'medium',
+      });
+      setFeedbackSent((current) => [...current, messageIndex]);
+      setFeedbackFor(null);
+      setFeedbackText('');
+    } catch (feedbackError) {
+      setError(feedbackError instanceof Error ? feedbackError.message : 'לא ניתן לשמור את המשוב.');
+    } finally {
+      setFeedbackSaving(false);
     }
   };
 
@@ -106,6 +141,8 @@ export default function AITeacherPage() {
     setSelectedQuestionId(null);
     setSearch('');
     setSearchResults([]);
+    setFeedbackFor(null);
+    setFeedbackText('');
     setMessages([{ role: 'assistant', text: 'התחלנו מחדש. בחר מצב לימוד או כתוב לי מה אתה רוצה ללמוד.' }]);
   };
 
@@ -125,6 +162,15 @@ export default function AITeacherPage() {
         </div>
       </header>
 
+      {profile && profile.weaknesses.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50/70 p-4">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div><div className="text-sm font-bold text-amber-900">המלצת המורה לפי התרגול שלך</div><div className="text-sm text-amber-800">כדאי לתת כרגע דגש על <strong>{profile.focus}</strong>.</div></div>
+            <div className="text-xs text-amber-700">דיוק כללי: {profile.accuracy ?? '—'}% · {profile.attempts} ניסיונות</div>
+          </div>
+        </Card>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="space-y-4">
           <Card className="p-4">
@@ -141,7 +187,19 @@ export default function AITeacherPage() {
         <main className="min-w-0 space-y-4">
           <Card className="overflow-hidden">
             <div className="border-b border-slate-200 bg-white p-4"><div className="flex flex-wrap gap-2">{QUICK_PROMPTS.map(({label,icon:Icon,prompt})=><button key={label} type="button" onClick={()=>ask(prompt)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"><Icon className="h-4 w-4" />{label}</button>)}<button type="button" onClick={clearChat} className="mr-auto inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-500 hover:bg-slate-100"><RotateCcw className="h-4 w-4" /> נקה שיחה</button></div></div>
-            <div className="min-h-[500px] max-h-[620px] space-y-4 overflow-y-auto bg-slate-50 p-4 md:p-6">{messages.map((message,index)=><div key={`${index}-${message.role}`} className={`flex ${message.role==='user'?'justify-start':'justify-end'}`}><div className={`max-w-[88%] rounded-2xl px-4 py-3 shadow-sm md:max-w-[78%] ${message.role==='user'?'bg-indigo-600 text-white':'border border-slate-200 bg-white text-slate-800'}`}><div className="mb-1 flex items-center gap-2 text-xs font-bold opacity-70">{message.role==='user'?'אתה':<><Brain className="h-3.5 w-3.5" /> המורה</>}</div><div className="whitespace-pre-wrap leading-7">{message.text}</div></div></div>)}{sending&&<div className="flex justify-end"><div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">המורה טוען ידע רלוונטי...</div></div>}</div>
+            <div className="min-h-[500px] max-h-[620px] space-y-4 overflow-y-auto bg-slate-50 p-4 md:p-6">
+              {messages.map((message,index)=><div key={`${index}-${message.role}`} className={`flex ${message.role==='user'?'justify-start':'justify-end'}`}>
+                <div className={`max-w-[88%] rounded-2xl px-4 py-3 shadow-sm md:max-w-[78%] ${message.role==='user'?'bg-indigo-600 text-white':'border border-slate-200 bg-white text-slate-800'}`}>
+                  <div className="mb-1 flex items-center gap-2 text-xs font-bold opacity-70">{message.role==='user'?'אתה':<><Brain className="h-3.5 w-3.5" /> המורה</>}</div>
+                  <div className="whitespace-pre-wrap leading-7">{message.text}</div>
+                  {message.role === 'assistant' && index > 0 && !feedbackSent.includes(index) && <div className="mt-3 border-t border-slate-100 pt-3">
+                    {feedbackFor === index ? <div className="space-y-2"><textarea value={feedbackText} onChange={(event)=>setFeedbackText(event.target.value)} placeholder="מה היה לא מדויק או מה צריך לתקן?" className="w-full rounded-xl border border-slate-300 p-2 text-sm outline-none focus:border-indigo-500" rows={3} /><div className="flex gap-2"><button type="button" onClick={()=>reportFeedback(index)} disabled={feedbackSaving||!feedbackText.trim()} className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{feedbackSaving?'שומר...':'שלח תיקון'}</button><button type="button" onClick={()=>setFeedbackFor(null)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs">ביטול</button></div></div> : <button type="button" onClick={()=>setFeedbackFor(index)} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-amber-700"><MessageSquareWarning className="h-3.5 w-3.5" /> המורה טעה או ההסבר לא ברור?</button>}
+                  </div>}
+                  {message.role === 'assistant' && feedbackSent.includes(index) && <div className="mt-2 text-xs font-medium text-emerald-600">✓ המשוב נשמר לבדיקה</div>}
+                </div>
+              </div>)}
+              {sending&&<div className="flex justify-end"><div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">המורה טוען ידע רלוונטי...</div></div>}
+            </div>
             <form onSubmit={send} className="border-t border-slate-200 bg-white p-4"><div className="flex gap-3"><input id="ai-teacher-input" value={input} onChange={(event)=>setInput(event.target.value)} placeholder="שאל את המורה כל דבר על הלמידה..." className="min-w-0 flex-1 rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /><button type="submit" disabled={sending||!input.trim()||!token} className="rounded-2xl bg-indigo-600 px-5 text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50" aria-label="שלח"><Send className="h-5 w-5" /></button></div><p className="mt-2 text-xs text-slate-500">אין חיבור ל־OpenAI/Gemini/Claude. המורה משתמש בידע המקומי ובמאגר השאלות דרך השרת.</p></form>
           </Card>
           {selectedQuestionId&&<Card className="border-indigo-100 bg-indigo-50/50 p-5"><div className="mb-3 flex items-center gap-2 font-bold text-indigo-900"><Trophy className="h-5 w-5" /> השאלה שנבחרה</div><p className="leading-7 text-slate-800">{selectedQuestion?cleanText(selectedQuestion.body):`שאלה #${selectedQuestionId} נטענה למורה.`}</p><div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={()=>{setMode('guided');ask('תן לי רמז בלבד לשאלה הזו, בלי לגלות את התשובה.')}} className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-indigo-700 shadow-sm"><Lightbulb className="h-4 w-4" /> תן רמז</button><button type="button" onClick={()=>{setMode('learn');ask('הסבר לי את הפתרון המלא לשאלה הזו ולמה כל שלב נכון.')}} className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-indigo-700 shadow-sm"><CheckCircle2 className="h-4 w-4" /> הסבר פתרון</button></div></Card>}
