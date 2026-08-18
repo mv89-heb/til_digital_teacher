@@ -1,4 +1,4 @@
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, g, jsonify
 
 from app.schemas.practice_schema import submit_answer_schema
 from app.services.learning_service import LearningService
@@ -29,7 +29,7 @@ def get_lesson(lesson_id):
 @learning_bp.route("/questions/<int:question_id>/submit", methods=["POST"])
 @jwt_required
 def submit_answer(question_id):
-    data = submit_answer_schema.load(request.get_json() or {})
+    data = submit_answer_schema.load(g.request_json if hasattr(g, "request_json") else {})
     result = PracticeService.submit_answer(g.current_user["id"], question_id, data["answer_id"])
     return jsonify(result), 200
 
@@ -44,5 +44,5 @@ def complete_lesson(lesson_id):
 @learning_bp.route("/lessons/<int:lesson_id>/progress", methods=["GET"])
 @jwt_required
 def get_lesson_progress(lesson_id):
-    progress = PracticeService.get_lesson_progress(lesson_id, g.current_user["id"])
+    progress = PracticeService.get_lesson_progress(g.current_user["id"], lesson_id)
     return jsonify({"progress": progress}), 200
