@@ -12,15 +12,9 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade():
-    conn = op.get_bind()
-
-    # v5 rebuilt answers but accidentally omitted answer ids from the
-    # immutable version snapshot. ExamService uses those ids when validating
-    # submissions, so every published version must contain them.
-    conn.execute(sa.text("""
-        UPDATE question_versions v
-        SET answer_snapshot = COALESCE((
+def _snapshot_sql():
+    return """
+        COALESCE((
             SELECT jsonb_agg(
                 jsonb_build_object(
                     'id', a.id,
@@ -31,14 +25,34 @@ def upgrade():
                 ) ORDER BY a."order", a.id
             )
             FROM answers a
-            WHERE a.question_id = v.question_id
+            WHERE a.question_id = :qid
         ), '[]'::jsonb)
+    """
+
+
+def upgrade():
+    conn = op.get_bind()
+
+    # v5 rebuilt answers but accidentally omitted answer ids from the
+    # immutable version snapshot. ExamService uses those ids when validating
+    # submissions, so every latest version must contain them.
+    conn.execute(sa.text(f"""
+        UPDATE question_versions v
+        SET answer_snapshot = {_snapshot_sql()}
         WHERE v.version_number = (
             SELECT MAX(v2.version_number)
             FROM question_versions v2
             WHERE v2.question_id = v.question_id
         )
-    """))
+    """), {"qid": None})
+
+    # Repair any already-created session snapshots as well. This makes the
+    # migration safe even if an exam session was created before v6 deployed.
+    conn.execute(sa.text(f"""
+        UPDATE session_questions sq
+        SET answer_snapshot = {_snapshot_sql()}
+        WHERE sq.question_id IS NOT NULL
+    """), {"qid": None})
 
     # The renderer expects visual_data while the seed stored visual.
     conn.execute(sa.text("""
@@ -52,9 +66,8 @@ def upgrade():
         WHERE question_metadata::jsonb ? 'visual'
     """))
 
-    # Keep the legacy difficulty field compatible with the application's
-    # QuestionDifficulty enum while retaining the precise 1..5 calibration
-    # in question_metadata.difficulty_level.
+    # Keep the legacy difficulty field compatible with QuestionDifficulty
+    # while retaining the precise 1..5 calibration in metadata.
     conn.execute(sa.text("""
         UPDATE questions
         SET difficulty = CASE
