@@ -1,5 +1,6 @@
 from flask import Blueprint, g, jsonify, request
 
+from app.models.exam_result_category import ExamResultCategory
 from app.services.exam_service import ExamService
 from app.utils.decorators import jwt_required
 
@@ -17,6 +18,13 @@ def start_exam(exam_id):
 @jwt_required
 def get_exam_session(session_id):
     session = ExamService.get_session_for_user(g.current_user["id"], session_id)
+    return jsonify({"session": ExamService.serialize_session(session)}), 200
+
+
+@exam_bp.route("/sessions/<int:session_id>/advance-section", methods=["POST"])
+@jwt_required
+def advance_section(session_id):
+    session = ExamService.advance_section(g.current_user["id"], session_id)
     return jsonify({"session": ExamService.serialize_session(session)}), 200
 
 
@@ -61,13 +69,27 @@ def submit_answer(session_id):
 @jwt_required
 def submit_exam(session_id):
     result = ExamService.submit_session(g.current_user["id"], session_id)
+    categories = ExamResultCategory.query.filter_by(result_id=result.id).order_by(ExamResultCategory.category).all()
     return jsonify({"result": {
         "id": result.id,
         "raw_score": str(result.raw_score),
         "weighted_score": str(result.weighted_score),
+        "normalized_score": str(result.normalized_score) if result.normalized_score is not None else None,
         "total_questions": result.total_questions,
         "answered_questions": result.answered_questions,
         "correct_answers": result.correct_answers,
         "skipped_questions": result.skipped_questions,
         "total_time_ms": result.total_time_ms,
+        "metadata": result.metadata_json or {},
+        "categories": [
+            {
+                "category": row.category,
+                "total_questions": row.total_questions,
+                "answered_questions": row.answered_questions,
+                "correct_answers": row.correct_answers,
+                "accuracy": str(row.accuracy) if row.accuracy is not None else None,
+                "average_time_ms": row.average_time_ms,
+            }
+            for row in categories
+        ],
     }}), 200
