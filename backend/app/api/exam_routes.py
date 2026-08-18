@@ -20,15 +20,34 @@ def get_exam_session(session_id):
     return jsonify({"session": ExamService.serialize_session(session)}), 200
 
 
+@exam_bp.route("/sessions/<int:session_id>/questions/<int:session_question_id>/view", methods=["POST"])
+@jwt_required
+def view_question(session_id, session_question_id):
+    question = ExamService.mark_question_viewed(
+        g.current_user["id"], session_id, session_question_id
+    )
+    return jsonify({
+        "session_question_id": question.id,
+        "first_seen_at": question.first_seen_at.isoformat() if question.first_seen_at else None,
+        "last_seen_at": question.last_seen_at.isoformat() if question.last_seen_at else None,
+    }), 200
+
+
 @exam_bp.route("/sessions/<int:session_id>/answers", methods=["POST"])
 @jwt_required
 def submit_answer(session_id):
     data = request.get_json() or {}
+    try:
+        session_question_id = int(data["session_question_id"])
+        answer_id = int(data["answer_id"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "session_question_id and answer_id are required integers"}), 400
+
     answer = ExamService.submit_answer(
         g.current_user["id"],
         session_id,
-        int(data["session_question_id"]),
-        int(data["answer_id"]),
+        session_question_id,
+        answer_id,
         data.get("elapsed_ms"),
     )
     return jsonify({"answer": {
