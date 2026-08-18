@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Database, Filter, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, Search } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { getQuestionBank } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -41,42 +41,53 @@ export default function QuestionBankBrowser({ categories }: { categories: Catego
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 mb-2">
-            <Database className="w-3.5 h-3.5" /> מאגר השאלות המלא
-          </div>
-          <h2 className="text-2xl font-extrabold text-slate-900">כל השאלות שהמערכת מכירה</h2>
-          <p className="text-sm text-slate-500 mt-1">עיון בכל השאלות, לפי קטגוריה ורמת קושי. התשובה הנכונה אינה חשופה מראש.</p>
-        </div>
-        {data && <div className="text-sm font-bold text-slate-600">{data.total} שאלות זמינות</div>}
-      </div>
-
       <Card className="p-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <label className="relative md:col-span-1">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="חיפוש בשאלה, נושא או מיומנות" className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pr-9 pl-3 text-sm outline-none focus:border-indigo-500" />
+            <input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="חיפוש בשאלה, נושא או מיומנות"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pr-9 pl-3 text-sm outline-none focus:border-indigo-500"
+            />
           </label>
           <label className="relative">
             <Filter className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <select value={categoryId ?? ''} onChange={(e) => { setCategoryId(e.target.value ? Number(e.target.value) : undefined); setPage(1); }} className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pr-9 pl-3 text-sm">
+            <select
+              value={categoryId ?? ''}
+              onChange={(e) => {
+                setCategoryId(e.target.value ? Number(e.target.value) : undefined);
+                setPage(1);
+              }}
+              className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pr-9 pl-3 text-sm"
+            >
               <option value="">כל הקטגוריות</option>
               {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
             </select>
           </label>
-          <select value={difficulty ?? ''} onChange={(e) => { setDifficulty((e.target.value || undefined) as typeof difficulty); setPage(1); }} className="w-full rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-sm">
+          <select
+            value={difficulty ?? ''}
+            onChange={(e) => {
+              setDifficulty((e.target.value || undefined) as typeof difficulty);
+              setPage(1);
+            }}
+            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-sm"
+          >
             <option value="">כל הרמות</option>
             <option value="easy">קל</option>
             <option value="medium">בינוני</option>
             <option value="exam">בחינה</option>
           </select>
         </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+          <span>עיון בלבד — התשובה הנכונה אינה חשופה מראש.</span>
+          {data && <span className="font-bold text-slate-600">{data.total} שאלות זמינות</span>}
+        </div>
       </Card>
 
       {query.isLoading && <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-56 w-full" />)}</div>}
       {query.isError && <Alert variant="error">לא הצלחנו לטעון את מאגר השאלות. נסה לרענן.</Alert>}
-
       {data && data.questions.length === 0 && <Card className="p-10 text-center text-slate-500">לא נמצאו שאלות לפי הסינון שבחרת.</Card>}
 
       {data && data.questions.length > 0 && (
@@ -86,7 +97,6 @@ export default function QuestionBankBrowser({ categories }: { categories: Catego
               <QuestionCard key={question.id} question={question} number={(data.page - 1) * data.per_page + index + 1} />
             ))}
           </div>
-
           <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-3">
             <button disabled={!data.has_previous} onClick={() => setPage((p) => p - 1)} className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-bold disabled:opacity-40 hover:bg-slate-50"><ChevronRight className="w-4 h-4" /> הקודם</button>
             <div className="text-sm font-bold text-slate-600">עמוד {data.page} מתוך {data.total_pages}</div>
