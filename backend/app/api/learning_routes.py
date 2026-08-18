@@ -44,5 +44,5 @@ def complete_lesson(lesson_id):
 @learning_bp.route("/lessons/<int:lesson_id>/progress", methods=["GET"])
 @jwt_required
 def get_lesson_progress(lesson_id):
-    progress = PracticeService.get_lesson_progress(lesson_id, g.current_user["id"])
+    progress = PracticeService.get_lesson_progress(g.current_user["id"], lesson_id)
     return jsonify({"progress": progress}), 200
