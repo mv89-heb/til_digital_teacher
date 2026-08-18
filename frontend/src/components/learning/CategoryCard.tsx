@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { ArrowLeft, BookOpen, CheckCircle2, Target, TrendingUp } from 'lucide-react';
+import { ArrowLeft, BookOpen, CheckCircle2, ClipboardCheck, Target, TrendingUp } from 'lucide-react';
 import Card from '@/components/ui/Card';
 import DynamicIcon from '@/components/ui/DynamicIcon';
 import type { Category, CategoryProgress } from '@/types/learning';
@@ -24,12 +24,13 @@ const LEVEL_LABEL: Record<string, string> = {
 
 export default function CategoryCard({ category, progress, index = 0, compact = false }: CategoryCardProps) {
   const lessonPercent = progress && progress.lessons_total > 0
-    ? Math.round((progress.lessons_completed / progress.lessons_total) * 100)
+    ? Math.min(100, Math.round((progress.lessons_completed / progress.lessons_total) * 100))
     : 0;
   const practicePercent = progress && progress.questions_attempted > 0
     ? Math.min(100, Math.round((progress.questions_attempted / Math.max(progress.questions_attempted, 20)) * 100))
     : 0;
   const hasPractice = !!progress && progress.questions_attempted > 0;
+  const isExamReady = progress?.level === 'exam_ready' || progress?.level === 'advanced';
   const nextLessonIndex = Math.min(progress?.lessons_completed ?? 0, Math.max(0, category.lessons.length - 1));
   const nextLesson = category.lessons[nextLessonIndex];
 
@@ -91,11 +92,14 @@ export default function CategoryCard({ category, progress, index = 0, compact = 
           </div>
         )}
 
-        {progress?.questions_attempted ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <Link href="/practice" className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">
             <TrendingUp className="w-3.5 h-3.5" /> לתרגול בתחום
           </Link>
-        ) : null}
+          <Link href="/exam" className={`inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition-colors ${isExamReady ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'border border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>
+            <ClipboardCheck className="w-3.5 h-3.5" /> {isExamReady ? 'מוכן לסימולציה' : 'לסימולציה'}
+          </Link>
+        </div>
       </Card>
     </motion.div>
   );
