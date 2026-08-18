@@ -1,5 +1,65 @@
 @import "tailwindcss";
 
+:root {
+  --app-bg: #f6f8fc;
+  --app-card: #ffffff;
+  --app-border: #e5eaf2;
+  --app-text: #0f172a;
+  --app-muted: #64748b;
+  --app-primary: #4f46e5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: 'Heebo Variable', 'Heebo', Arial, sans-serif;
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: #c7d2fe;
+  color: #1e1b4b;
+}
+
+:focus-visible {
+  outline: 3px solid rgba(79, 70, 229, 0.25);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
 .font-heebo {
   font-family: 'Heebo Variable', 'Heebo', sans-serif;
 }
