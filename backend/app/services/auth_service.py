@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from app.config import Config
+from config import Config
 from app.extensions import db
 from app.models.user import User
 from app.utils.exceptions import AppError
@@ -21,14 +21,12 @@ class AuthService:
 
         hashed_password = generate_password_hash(password)
         new_user = User(email=normalized_email, password_hash=hashed_password)
-
         db.session.add(new_user)
         try:
             db.session.commit()
         except Exception:
             db.session.rollback()
             raise
-
         return new_user.to_dict()
 
     @staticmethod
