@@ -19,7 +19,7 @@ def adaptive_questions(client, admin_token, auth_headers):
                 "status": "published",
                 "body": {"body": f"שאלה {index + 1}"},
                 "solution_text": {"body": "פתרון נסתר"},
-                "question_metadata": {"skill": skill},
+                "metadata": {"skill": skill},
                 "answers": [
                     {"answer_text": "A", "is_correct": True},
                     {"answer_text": "B", "is_correct": False},
