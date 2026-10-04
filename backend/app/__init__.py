@@ -11,9 +11,12 @@ def create_app(config_name=None):
     flask_app = Flask(__name__)
 
     config_name = config_name or os.getenv("FLASK_ENV", "production")
-    from config import config_by_name
+    from config import config_by_name, validate_production_config
 
-    flask_app.config.from_object(config_by_name[config_name])
+    config_class = config_by_name[config_name]
+    if config_name == "production":
+        validate_production_config(config_class)
+    flask_app.config.from_object(config_class)
 
     db.init_app(flask_app)
     migrate.init_app(flask_app, db)

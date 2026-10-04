@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, GraduationCap, Loader2, Lock, Mail } from 'lucide-react';
 import { fetchApi } from '@/lib/api';
+import type { User } from '@/store/useAuthStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import Alert from '@/components/ui/Alert';
 
@@ -41,7 +42,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetchApi('/auth/login', {
+      const response = await fetchApi<{ data: { user: User; token: string } }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });

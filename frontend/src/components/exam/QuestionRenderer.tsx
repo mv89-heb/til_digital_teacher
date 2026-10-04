@@ -9,11 +9,19 @@ type Answer = {
   order: number;
 };
 
+type Shape =
+  | { type: "circle"; cx: number; cy: number; r: number; rotation?: number }
+  | { type: "rectangle"; x: number; y: number; width: number; height: number; rotation?: number }
+  | { type: "triangle"; x: number; y: number; size: number; rotation?: number }
+  | { type: "line"; x1: number; y1: number; x2: number; y2: number };
+
+type MatrixVisual = { type: "matrix"; rows: number; columns: number; cells: { row: number; column: number; shapes: Shape[] }[]; missingCell?: { row: number; column: number } };
+type ShapesVisual = { type: "shapes"; shapes: Shape[]; width?: number; height?: number };
 type ExamQuestion = {
   id: number;
   question_type?: string | null;
   prompt: unknown;
-  visual_data?: any;
+  visual_data?: unknown;
   answers: Answer[];
 };
 
@@ -34,7 +42,7 @@ function richText(value: unknown): string {
 }
 
 export function QuestionRenderer({ question, selectedAnswerId, disabled, onSelect }: Props) {
-  const visual = question.visual_data;
+  const visual = question.visual_data && typeof question.visual_data === 'object' ? question.visual_data as MatrixVisual | ShapesVisual : null;
 
   return (
     <section className="space-y-6" dir="rtl" aria-label="שאלה במבחן">

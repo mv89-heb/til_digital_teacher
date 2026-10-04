@@ -1,7 +1,14 @@
-def test_teacher_modes_are_distinct(client, student_token, auth_headers, adaptive_questions):
-    question_id = adaptive_questions["questions"][0]["id"]
-    headers = auth_headers(student_token)
+def test_teacher_modes_are_distinct(client, student_token, auth_headers, app):
+    with app.app_context():
+        from seed import seed_demo_data
+        from app.models.question import Question
 
+        seed_demo_data()
+        question = Question.query.first()
+        assert question is not None
+        question_id = question.id
+
+    headers = auth_headers(student_token)
     responses = {}
     for mode in ("learn", "guided", "practice", "mistake"):
         response = client.post(
@@ -19,4 +26,4 @@ def test_teacher_modes_are_distinct(client, student_token, auth_headers, adaptiv
     assert responses["guided"]["answer"] != responses["learn"]["answer"]
     assert responses["practice"]["answer"] != responses["guided"]["answer"]
     assert responses["mistake"]["answer"] != responses["practice"]["answer"]
-    assert "פתרון" not in responses["practice"]["answer"]
+    assert responses["practice"]["question"]["solution_text"] is None

@@ -1,18 +1,15 @@
 from datetime import datetime, timedelta, timezone
 
 import jwt
+from flask import current_app
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from config import Config
 from app.extensions import db
 from app.models.user import User
 from app.utils.exceptions import AppError
 
 
 class AuthService:
-    SECRET_KEY = Config.SECRET_KEY
-    JWT_EXPIRES_DAYS = Config.JWT_EXPIRES_DAYS
-
     @staticmethod
     def register_user(email: str, password: str) -> dict:
         normalized_email = email.strip().lower()
@@ -52,11 +49,11 @@ class AuthService:
         payload = {
             "user_id": user.id,
             "iat": now,
-            "exp": now + timedelta(days=AuthService.JWT_EXPIRES_DAYS),
+            "exp": now + timedelta(days=current_app.config["JWT_EXPIRES_DAYS"]),
         }
 
         try:
-            token = jwt.encode(payload, AuthService.SECRET_KEY, algorithm="HS256")
+            token = jwt.encode(payload, current_app.config["SECRET_KEY"], algorithm="HS256")
         except Exception as exc:
             db.session.rollback()
             raise AppError("Authentication configuration error", status_code=500) from exc
@@ -77,7 +74,10 @@ class AuthService:
     @staticmethod
     def verify_token(token: str) -> dict:
         try:
-            payload = jwt.decode(token, AuthService.SECRET_KEY, algorithms=["HS256"])
+            headers = jwt.get_unverified_header(token)
+            if headers.get("crit"):
+                raise AppError("Invalid token", status_code=401)
+            payload = jwt.decode(token, current_app.config["SECRET_KEY"], algorithms=["HS256"])
         except jwt.ExpiredSignatureError:
             raise AppError("Token expired", status_code=401)
         except jwt.InvalidTokenError:

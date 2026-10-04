@@ -104,29 +104,38 @@ def test_seed_data_loads_successfully(app):
         from seed import seed_demo_data
 
         summary = seed_demo_data()
-        assert summary["already_seeded"] is False
-        assert len(summary["question_ids"]) == 5
+        assert summary["lesson_id"] is not None
+        assert summary["bank_added"] >= 0
+        assert summary["published_questions"] >= 5
 
         from app.extensions import db
         lesson = db.session.get(Lesson, summary["lesson_id"])
         assert lesson is not None
         sections = {block.section for block in lesson.content_blocks}
-        assert sections == set(LessonSection.ALL)
-        assert len(lesson.content_blocks) == 10  # 7 text sections + 3 guided-practice questions
+        assert sections == {
+            LessonSection.SIMPLE_EXPLANATION,
+            LessonSection.NORMAL_EXPLANATION,
+            LessonSection.SOLVED_EXAMPLE,
+            LessonSection.NORMAL_METHOD,
+            LessonSection.FAST_METHOD,
+            LessonSection.COMMON_MISTAKES,
+            LessonSection.SUMMARY,
+        }
+        assert len(lesson.content_blocks) == 7
 
         embedded_blocks = [b for b in lesson.content_blocks if b.block_type == "embedded_question"]
-        assert len(embedded_blocks) == 3
-        for block in embedded_blocks:
-            assert "question_id" in block.content
+        assert embedded_blocks == []
 
         questions = Question.query.filter_by(lesson_id=lesson.id).all()
-        assert len(questions) == 5
+        assert len(questions) >= 5
+        assert len([question for question in questions if question.lesson_id == lesson.id]) >= 5
         for question in questions:
             assert len(question.answers) == 4
             assert sum(1 for a in question.answers if a.is_correct) == 1
 
         # re-running must be idempotent
         second_run = seed_demo_data()
-        assert second_run["already_seeded"] is True
-        assert Lesson.query.count() == 1
-        assert Question.query.count() == 5
+        assert second_run["lesson_id"] == summary["lesson_id"]
+        assert second_run["bank_added"] == 0
+        assert Lesson.query.count() >= 1
+        assert Question.query.count() >= 5

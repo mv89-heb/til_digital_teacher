@@ -7,6 +7,8 @@ import { getExamSession, markExamQuestionViewed, startExam, submitExam, submitEx
 import { currentQuestion, hydrateExam, initialExamState, questionsForCurrentSection, reduceExamState, remainingSectionMs } from '@/lib/examEngine';
 import type { ExamResult, ExamSession } from '@/types/exam';
 
+function nowMs(): number { return Date.now(); }
+
 function promptText(prompt: unknown): string {
   if (typeof prompt === 'string') return prompt;
   if (prompt && typeof prompt === 'object') {
@@ -64,7 +66,7 @@ export default function ExamSimulation({ examId }: { examId: number }) {
   const [now, setNow] = useState(() => Date.now());
   const [state, dispatch] = useReducer(reduceExamState, initialExamState);
   const [submittingAnswer, setSubmittingAnswer] = useState(false);
-  const questionStartedAt = useRef(Date.now());
+  const questionStartedAt = useRef(nowMs());
   const syncingRef = useRef(false);
 
   const syncSession = useCallback(async () => {
@@ -73,7 +75,7 @@ export default function ExamSimulation({ examId }: { examId: number }) {
     try {
       const fresh = await getExamSession(session.id, token);
       setSession(fresh);
-      dispatch({ type: 'SECTION_SYNCED', session: fresh, clientNowMs: Date.now() });
+      dispatch({ type: 'SECTION_SYNCED', session: fresh, clientNowMs: nowMs() });
       if (fresh.status === 'EXPIRED' || fresh.status === 'SUBMITTED') {
         setResult(await submitExam(fresh.id, token));
         dispatch({ type: 'FINISHED' });
@@ -103,11 +105,11 @@ export default function ExamSimulation({ examId }: { examId: number }) {
   }, [examId, token]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    const timer = window.setInterval(() => setNow(nowMs()), 250);
     return () => window.clearInterval(timer);
   }, []);
 
-  const questions = useMemo(() => session ? questionsForCurrentSection(session) : [], [session, state.currentSectionIndex]);
+  const questions = useMemo(() => session ? questionsForCurrentSection(session) : [], [session]);
   const question = session ? currentQuestion(session, state) : undefined;
   const remaining = session ? remainingSectionMs(session, now) : 0;
   const currentPosition = Math.max(0, questions.findIndex((q) => q.sequence_number === state.currentQuestionIndex));
@@ -117,7 +119,7 @@ export default function ExamSimulation({ examId }: { examId: number }) {
 
   useEffect(() => {
     if (!session || !question || !token) return;
-    questionStartedAt.current = Date.now();
+    questionStartedAt.current = nowMs();
     dispatch({ type: 'VIEWED', questionId: question.id });
     void markExamQuestionViewed(session.id, question.id, token).catch(() => undefined);
   }, [session?.id, question?.id, token]);
@@ -133,7 +135,7 @@ export default function ExamSimulation({ examId }: { examId: number }) {
     setSubmittingAnswer(true);
     dispatch({ type: 'SELECT_ANSWER', questionId: question.id, answerId });
     try {
-      await submitExamAnswer(session.id, question.id, answerId, Math.max(0, Date.now() - questionStartedAt.current), token);
+      await submitExamAnswer(session.id, question.id, answerId, Math.max(0, nowMs() - questionStartedAt.current), token);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'לא ניתן לשמור את התשובה.');
     } finally {

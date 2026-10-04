@@ -5,14 +5,17 @@ import { useAuthStore } from '@/store/useAuthStore';
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
 const API_URL = configuredApiUrl || (process.env.NODE_ENV === 'development' ? 'http://localhost:5000/api' : 'https://til-digital-teacher.onrender.com/api');
 
-export async function fetchApi(endpoint: string, options: RequestInit = {}) {
+export async function fetchApi<T = Record<string, unknown>>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_URL}${endpoint}`, { ...options, headers: { 'Content-Type': 'application/json', ...options.headers } });
   const text = await response.text();
-  let data: any = {};
+  let data: unknown = {};
   if (text) { try { data = JSON.parse(text); } catch { data = { error: text.slice(0, 500) }; } }
   if (response.status === 401 && typeof window !== 'undefined') useAuthStore.getState().logout();
-  if (!response.ok) throw new Error(data.error || `בקשת השרת נכשלה (${response.status}).`);
-  return data;
+  if (!response.ok) {
+    const errorMessage = data && typeof data === "object" && "error" in data && typeof data.error === "string" ? data.error : "בקשת השרת נכשלה (" + response.status + ").";
+    throw new Error(errorMessage);
+  }
+  return data as T;
 }
 
 function authHeaders(token: string) { return { Authorization: `Bearer ${token}` }; }
@@ -28,11 +31,11 @@ export type ExamCatalogItem = {
 };
 
 export async function getCategories(): Promise<Category[]> {
-  const data = await fetchApi('/learning/categories');
+  const data = await fetchApi<{ categories: Category[] }>('/learning/categories');
   return data.categories;
 }
 export async function getLesson(lessonId: number | string): Promise<LessonDetail> {
-  const data = await fetchApi(`/learning/lessons/${lessonId}`); return data.lesson;
+  const data = await fetchApi<{ lesson: LessonDetail }>(`/learning/lessons/${lessonId}`); return data.lesson;
 }
 export async function getQuestionBank(token: string, options: { categoryId?: number; difficulty?: 'easy' | 'medium' | 'exam'; page?: number; perPage?: number; search?: string } = {}): Promise<QuestionBankPage> {
   const params = new URLSearchParams();
@@ -42,10 +45,18 @@ export async function getQuestionBank(token: string, options: { categoryId?: num
   if (options.perPage) params.set('per_page', String(options.perPage));
   if (options.search?.trim()) params.set('search', options.search.trim());
   const query = params.toString();
-  return fetchApi(`/learning/question-bank${query ? `?${query}` : ''}`, { headers: authHeaders(token) });
+  return fetchApi<QuestionBankPage>(`/learning/question-bank${query ? `?${query}` : ''}`, { headers: authHeaders(token) });
 }
-export async function getTeacherLesson(query: string, token: string, options: { mode?: 'learn' | 'guided' | 'practice' | 'mistake'; questionId?: number } = {}) {
-  return fetchApi('/learning/teacher/teach', {
+export type TeacherLessonResponse = {
+  mode: 'learn' | 'guided' | 'practice' | 'mistake';
+  answer: string;
+  question?: unknown;
+  stats?: { total_questions: number; total_lessons: number };
+  student_profile?: { attempts: number; accuracy: number | null; focus: string | null; strengths: { skill: string; accuracy: number }[]; weaknesses: { skill: string; accuracy: number }[] };
+};
+
+export async function getTeacherLesson(query: string, token: string, options: { mode?: 'learn' | 'guided' | 'practice' | 'mistake'; questionId?: number } = {}): Promise<TeacherLessonResponse> {
+  return fetchApi<TeacherLessonResponse>('/learning/teacher/teach', {
     method: 'POST',
     headers: authHeaders(token),
     body: JSON.stringify({ query, mode: options.mode || 'learn', question_id: options.questionId ?? null }),
@@ -77,25 +88,25 @@ export async function getPracticeQuestions(token: string, options: { categoryId?
   if (options.limit) params.set('limit', String(options.limit));
   if (options.mode) params.set('mode', options.mode);
   const query = params.toString();
-  return fetchApi(`/learning/practice/questions${query ? `?${query}` : ''}`, { headers: authHeaders(token) });
+  return fetchApi<PracticeQuestionPool>(`/learning/practice/questions${query ? `?${query}` : ''}`, { headers: authHeaders(token) });
 }
 export async function getPracticeQuestion(questionId: number, token: string) {
-  const data = await fetchApi(`/learning/practice/questions/${questionId}`, { headers: authHeaders(token) }); return data.question;
+  const data = await fetchApi<{ question: unknown }>(`/learning/practice/questions/${questionId}`, { headers: authHeaders(token) }); return data.question;
 }
 export async function submitAnswer(questionId: number, answerId: number, token: string): Promise<SubmitAnswerResult> {
-  return fetchApi(`/learning/questions/${questionId}/submit`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ answer_id: answerId }) });
+  return fetchApi<SubmitAnswerResult>(`/learning/questions/${questionId}/submit`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ answer_id: answerId }) });
 }
 export async function completeLesson(lessonId: number | string, token: string): Promise<LessonProgress> {
-  const data = await fetchApi(`/learning/lessons/${lessonId}/complete`, { method: 'POST', headers: authHeaders(token) }); return data.progress;
+  const data = await fetchApi<{ progress: LessonProgress }>(`/learning/lessons/${lessonId}/complete`, { method: 'POST', headers: authHeaders(token) }); return data.progress;
 }
 export async function getLessonProgress(lessonId: number | string, token: string): Promise<LessonProgress> {
-  const data = await fetchApi(`/learning/lessons/${lessonId}/progress`, { headers: authHeaders(token) }); return data.progress;
+  const data = await fetchApi<{ progress: LessonProgress }>(`/learning/lessons/${lessonId}/progress`, { headers: authHeaders(token) }); return data.progress;
 }
-export async function getDashboard(token: string): Promise<DashboardSummary> { return fetchApi('/learning/dashboard', { headers: authHeaders(token) }); }
-export async function getExams(token: string): Promise<ExamCatalogItem[]> { const data = await fetchApi('/exams', { headers: authHeaders(token) }); return data.exams; }
-export async function startExam(examId: number, token: string): Promise<ExamSession> { const data = await fetchApi(`/exams/${examId}/sessions`, { method: 'POST', headers: authHeaders(token) }); return data.session; }
-export async function getExamSession(sessionId: number, token: string): Promise<ExamSession> { const data = await fetchApi(`/exams/sessions/${sessionId}`, { headers: authHeaders(token) }); return data.session; }
-export async function advanceExamSection(sessionId: number, token: string): Promise<ExamSession> { const data = await fetchApi(`/exams/sessions/${sessionId}/advance-section`, { method: 'POST', headers: authHeaders(token) }); return data.session; }
+export async function getDashboard(token: string): Promise<DashboardSummary> { return fetchApi<DashboardSummary>('/learning/dashboard', { headers: authHeaders(token) }); }
+export async function getExams(token: string): Promise<ExamCatalogItem[]> { const data = await fetchApi<{ exams: ExamCatalogItem[] }>('/exams', { headers: authHeaders(token) }); return data.exams; }
+export async function startExam(examId: number, token: string): Promise<ExamSession> { const data = await fetchApi<{ session: ExamSession }>(`/exams/${examId}/sessions`, { method: 'POST', headers: authHeaders(token) }); return data.session; }
+export async function getExamSession(sessionId: number, token: string): Promise<ExamSession> { const data = await fetchApi<{ session: ExamSession }>(`/exams/sessions/${sessionId}`, { headers: authHeaders(token) }); return data.session; }
+export async function advanceExamSection(sessionId: number, token: string): Promise<ExamSession> { const data = await fetchApi<{ session: ExamSession }>(`/exams/sessions/${sessionId}/advance-section`, { method: 'POST', headers: authHeaders(token) }); return data.session; }
 export async function markExamQuestionViewed(sessionId: number, sessionQuestionId: number, token: string) { return fetchApi(`/exams/sessions/${sessionId}/questions/${sessionQuestionId}/view`, { method: 'POST', headers: authHeaders(token) }); }
-export async function submitExamAnswer(sessionId: number, sessionQuestionId: number, answerId: number, elapsedMs: number, token: string): Promise<ExamAnswerResult> { const data = await fetchApi(`/exams/sessions/${sessionId}/answers`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ session_question_id: sessionQuestionId, answer_id: answerId, elapsed_ms: elapsedMs }) }); return data.answer; }
-export async function submitExam(sessionId: number, token: string): Promise<ExamResult> { const data = await fetchApi(`/exams/sessions/${sessionId}/submit`, { method: 'POST', headers: authHeaders(token) }); return data.result; }
+export async function submitExamAnswer(sessionId: number, sessionQuestionId: number, answerId: number, elapsedMs: number, token: string): Promise<ExamAnswerResult> { const data = await fetchApi<{ answer: ExamAnswerResult }>(`/exams/sessions/${sessionId}/answers`, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({ session_question_id: sessionQuestionId, answer_id: answerId, elapsed_ms: elapsedMs }) }); return data.answer; }
+export async function submitExam(sessionId: number, token: string): Promise<ExamResult> { const data = await fetchApi<{ result: ExamResult }>(`/exams/sessions/${sessionId}/submit`, { method: 'POST', headers: authHeaders(token) }); return data.result; }

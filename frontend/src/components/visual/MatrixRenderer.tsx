@@ -2,7 +2,13 @@
 
 import { ShapeRenderer } from "./ShapeRenderer";
 
-type Cell = { row: number; column: number; shapes: any[] };
+type Shape =
+  | { type: "circle"; cx: number; cy: number; r: number; rotation?: number }
+  | { type: "rectangle"; x: number; y: number; width: number; height: number; rotation?: number }
+  | { type: "triangle"; x: number; y: number; size: number; rotation?: number }
+  | { type: "line"; x1: number; y1: number; x2: number; y2: number };
+
+type Cell = { row: number; column: number; shapes: Shape[] };
 
 type Props = {
   rows: number;

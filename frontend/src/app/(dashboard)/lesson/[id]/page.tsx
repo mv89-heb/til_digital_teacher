@@ -58,7 +58,7 @@ export default function LessonPage() {
     }
     const saved = Number(window.localStorage.getItem(`${STORAGE_PREFIX}${lessonId}`));
     if (Number.isInteger(saved) && saved >= 0 && saved < lesson.content_blocks.length) {
-      setCurrentIndex(saved);
+      window.setTimeout(() => setCurrentIndex(saved), 0);
     }
   }, [lesson, lessonId, progress?.completed]);
 
@@ -84,7 +84,7 @@ export default function LessonPage() {
       queryClient.setQueryData(['lesson-progress', lessonId], newProgress);
       if (typeof window !== 'undefined') window.localStorage.removeItem(`${STORAGE_PREFIX}${lessonId}`);
       showToast(`🏆 שיעור הושלם! (+${newProgress.xp_earned} XP)`, 'success');
-      fetchApi('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      fetchApi<{ user: { xp_total: number } }>('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
         .then((data) => updateXp(data.user.xp_total))
         .catch(() => {});
     },
@@ -94,7 +94,7 @@ export default function LessonPage() {
     showToast(`+${xpEarned} XP`, 'success');
     getLessonProgress(lessonId, token as string)
       .then((p) => queryClient.setQueryData(['lesson-progress', lessonId], p));
-    fetchApi('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+    fetchApi<{ user: { xp_total: number } }>('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
       .then((data) => updateXp(data.user.xp_total))
       .catch(() => {});
   };

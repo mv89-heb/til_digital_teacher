@@ -13,7 +13,7 @@ type ExamQuestion = {
   status: string;
   total_time_ms: number;
   prompt: unknown;
-  visual_data?: any;
+  visual_data?: unknown;
   question_type?: string | null;
   difficulty?: string | null;
   answers: { id: number; answer_text: unknown; order: number }[];

@@ -5,11 +5,11 @@ import { Brain, CheckCircle2, HelpCircle, Lightbulb, RotateCcw, Search, Send, Sp
 import Card from '@/components/ui/Card';
 import { getCategories, getTeacherLesson, submitTeacherFeedback } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
-import type { Category } from '@/types/learning';
 
 type Message = { role: 'user' | 'assistant'; text: string };
 type TeacherMode = 'learn' | 'guided' | 'practice' | 'mistake';
 type TeacherProfile = { attempts: number; accuracy: number | null; focus: string | null; strengths: { skill: string; accuracy: number }[]; weaknesses: { skill: string; accuracy: number }[] };
+type TeacherQuestion = { id: number; subcategory?: string; skill?: string; main_category?: string; question_type?: string; body?: unknown };
 
 const QUICK_PROMPTS = [
   { label: 'למד אותי נושא', icon: BookOpen, prompt: 'למד אותי את הנושא הזה מהבסיס, עם דוגמאות ותרגול.' },
@@ -24,16 +24,16 @@ const cleanText = (value: unknown): string => {
   if (typeof value === 'object' && value !== null && 'body' in value) return String((value as { body?: unknown }).body ?? '');
   return '';
 };
-const lessonTopic = (q: any) => q?.subcategory || q?.skill || q?.main_category || q?.question_type || 'הנושא הנוכחי';
+const lessonTopic = (q: TeacherQuestion) => q.subcategory || q.skill || q.main_category || q.question_type || 'הנושא הנוכחי';
 
 export default function AITeacherPage() {
   const token = useAuthStore((state) => state.token);
-  const [categories, setCategories] = useState<Category[]>([]);
+  
   const [mode, setMode] = useState<TeacherMode>('learn');
   const [input, setInput] = useState('');
   const [selectedQuestionId, setSelectedQuestionId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<TeacherQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -53,7 +53,6 @@ export default function AITeacherPage() {
       try {
         const categoryData = await getCategories();
         if (cancelled) return;
-        setCategories(categoryData);
         setStats((current) => ({ ...current, categories: categoryData.length, lessons: categoryData.reduce((sum, c) => sum + c.lesson_count, 0) }));
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'לא ניתן לטעון את קטלוג הלימוד.');
@@ -66,14 +65,15 @@ export default function AITeacherPage() {
 
   useEffect(() => {
     if (!token || !search.trim()) {
-      setSearchResults([]);
+      window.setTimeout(() => setSearchResults([]), 0);
       return;
     }
     const timer = window.setTimeout(async () => {
       try {
         const result = await getTeacherLesson(search.trim(), token, { mode: 'learn' });
-        setSearchResults(result?.question ? [result.question] : []);
-        if (result?.stats) setStats((current) => ({ ...current, questions: result.stats.total_questions, lessons: result.stats.total_lessons }));
+        setSearchResults(result.question && typeof result.question === 'object' ? [result.question as TeacherQuestion] : []);
+        const searchStats = result.stats;
+        if (searchStats) setStats((current) => ({ ...current, questions: searchStats.total_questions, lessons: searchStats.total_lessons }));
       } catch {
         setSearchResults([]);
       }
@@ -93,7 +93,8 @@ export default function AITeacherPage() {
     try {
       const result = await getTeacherLesson(prompt, token, { mode, questionId: selectedQuestionId ?? undefined });
       const text = result?.answer || 'לא הצלחתי לבנות תשובה כרגע.';
-      if (result?.stats) setStats((current) => ({ ...current, questions: result.stats.total_questions, lessons: result.stats.total_lessons }));
+      const responseStats = result.stats;
+      if (responseStats) setStats((current) => ({ ...current, questions: responseStats.total_questions, lessons: responseStats.total_lessons }));
       if (result?.student_profile) setProfile(result.student_profile);
       setMessages((current) => [...current, { role: 'assistant', text }]);
     } catch (requestError) {
