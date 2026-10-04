@@ -13,7 +13,7 @@ type ExamQuestion = {
   id: number;
   question_type?: string | null;
   prompt: unknown;
-  visual_data?: any;
+  visual_data?: unknown;
   answers: Answer[];
 };
 
