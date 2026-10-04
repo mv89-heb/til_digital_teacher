@@ -112,13 +112,19 @@ def test_seed_data_loads_successfully(app):
         lesson = db.session.get(Lesson, summary["lesson_id"])
         assert lesson is not None
         sections = {block.section for block in lesson.content_blocks}
-        assert sections == set(LessonSection.ALL)
-        assert len(lesson.content_blocks) == 10  # 7 text sections + 3 guided-practice questions
+        assert sections == {
+            LessonSection.SIMPLE_EXPLANATION,
+            LessonSection.NORMAL_EXPLANATION,
+            LessonSection.SOLVED_EXAMPLE,
+            LessonSection.NORMAL_METHOD,
+            LessonSection.FAST_METHOD,
+            LessonSection.COMMON_MISTAKES,
+            LessonSection.SUMMARY,
+        }
+        assert len(lesson.content_blocks) == 7
 
         embedded_blocks = [b for b in lesson.content_blocks if b.block_type == "embedded_question"]
-        assert len(embedded_blocks) == 3
-        for block in embedded_blocks:
-            assert "question_id" in block.content
+        assert embedded_blocks == []
 
         questions = Question.query.filter_by(lesson_id=lesson.id).all()
         assert len(questions) == 5
