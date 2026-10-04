@@ -8,10 +8,10 @@ const API_URL = configuredApiUrl || (process.env.NODE_ENV === 'development' ? 'h
 export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   const response = await fetch(`${API_URL}${endpoint}`, { ...options, headers: { 'Content-Type': 'application/json', ...options.headers } });
   const text = await response.text();
-  let data: any = {};
+  let data: Record<string, unknown> = {};
   if (text) { try { data = JSON.parse(text); } catch { data = { error: text.slice(0, 500) }; } }
   if (response.status === 401 && typeof window !== 'undefined') useAuthStore.getState().logout();
-  if (!response.ok) throw new Error(data.error || `בקשת השרת נכשלה (${response.status}).`);
+  if (!response.ok) { const message = typeof data.error === "string" ? data.error : "בקשת השרת נכשלה (" + response.status + ")."; throw new Error(message); }
   return data;
 }
 
