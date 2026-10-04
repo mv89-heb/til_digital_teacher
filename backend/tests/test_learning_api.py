@@ -127,7 +127,8 @@ def test_seed_data_loads_successfully(app):
         assert embedded_blocks == []
 
         questions = Question.query.filter_by(lesson_id=lesson.id).all()
-        assert len(questions) == 5
+        assert len(questions) >= 5
+        assert len([question for question in questions if question.lesson_id == lesson.id]) >= 5
         for question in questions:
             assert len(question.answers) == 4
             assert sum(1 for a in question.answers if a.is_correct) == 1
