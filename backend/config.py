@@ -1,6 +1,10 @@
 import os
 
-from app.core.security_policy import require_production_secret
+from app.core.security_policy import require_production_config, require_production_secret
+
+
+def _csv_env(name: str, default: str = "") -> list[str]:
+    return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
 
 
 class Config:
@@ -12,7 +16,7 @@ class Config:
         "DATABASE_URL", "postgresql://user:password@localhost/til_db"
     )
     JWT_EXPIRES_DAYS = int(os.getenv("JWT_EXPIRES_DAYS", "1"))
-    CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+    CORS_ORIGINS = _csv_env("CORS_ORIGINS", "http://localhost:3000")
     MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(2 * 1024 * 1024)))
     RATELIMIT_STORAGE_URI = os.getenv("RATELIMIT_STORAGE_URI", "memory://")
 
@@ -26,32 +30,38 @@ class TestingConfig(Config):
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = os.getenv("TEST_DATABASE_URL", "sqlite:///:memory:")
     SECRET_KEY = "test-secret-key"
-    CORS_ORIGINS = "http://localhost:3000"
+    CORS_ORIGINS = ["http://localhost:3000"]
     RATELIMIT_ENABLED = False
 
 
 class ProductionConfig(Config):
+    """Production settings are validated when the production app is created."""
+
     DEBUG = False
-    SECRET_KEY = require_production_secret(
+    SECRET_KEY = None
+    SQLALCHEMY_DATABASE_URI = None
+    CORS_ORIGINS = []
+
+
+def validate_production_config(config: type[ProductionConfig]) -> None:
+    """Fail closed when required production security settings are missing."""
+
+    config.SECRET_KEY = require_production_secret(
         os.getenv("JWT_SECRET") or os.getenv("SECRET_KEY"),
         "JWT_SECRET (or SECRET_KEY)",
     )
-    # Accept a comma-separated list, while always allowing the deployed
-    # frontend origins used by this application. This prevents a stale or
-    # incomplete Render environment variable from silently breaking browser
-    # POST requests such as login.
-    _configured_cors = os.getenv("CORS_ORIGINS", "")
-    _frontend_origins = (
-        "https://til-digital-teacher-0ryl.onrender.com",
-        "https://til-digital-teacher.onrender.com",
-    )
-    CORS_ORIGINS = ",".join(
-        dict.fromkeys(
-            origin.strip()
-            for origin in (_configured_cors.split(",") + list(_frontend_origins))
-            if origin.strip()
+
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError(
+            "DATABASE_URL must be configured in production (Neon PostgreSQL)"
         )
-    )
+    config.SQLALCHEMY_DATABASE_URI = database_url
+
+    cors_origins = _csv_env("CORS_ORIGINS")
+    if not cors_origins:
+        raise RuntimeError("CORS_ORIGINS must be configured in production")
+    config.CORS_ORIGINS = cors_origins
 
 
 config_by_name = {
