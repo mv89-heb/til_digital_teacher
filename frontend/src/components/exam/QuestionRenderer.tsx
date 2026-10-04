@@ -9,11 +9,19 @@ type Answer = {
   order: number;
 };
 
+type Shape =
+  | { type: "circle"; cx: number; cy: number; r: number; rotation?: number }
+  | { type: "rectangle"; x: number; y: number; width: number; height: number; rotation?: number }
+  | { type: "triangle"; x: number; y: number; size: number; rotation?: number }
+  | { type: "line"; x1: number; y1: number; x2: number; y2: number };
+
+type MatrixVisual = { type: "matrix"; rows: number; columns: number; cells: { row: number; column: number; shapes: Shape[] }[]; missingCell?: { row: number; column: number } };
+type ShapesVisual = { type: "shapes"; shapes: Shape[]; width?: number; height?: number };
 type ExamQuestion = {
   id: number;
   question_type?: string | null;
   prompt: unknown;
-  visual_data?: unknown;
+  visual_data?: MatrixVisual | ShapesVisual | null;
   answers: Answer[];
 };
 
