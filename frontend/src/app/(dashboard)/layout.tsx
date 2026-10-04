@@ -6,6 +6,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import Spinner from '@/components/ui/Spinner';
 import { fetchApi } from '@/lib/api';
+import type { User } from '@/store/useAuthStore';
 import { useAuthStore } from '@/store/useAuthStore';
 
 export default function DashboardLayout({
@@ -23,7 +24,7 @@ export default function DashboardLayout({
       return;
     }
 
-    fetchApi('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+    fetchApi<{ user: User }>('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => {
         login(res.user, token);
         setChecked(true);
