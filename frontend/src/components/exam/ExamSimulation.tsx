@@ -7,7 +7,9 @@ import { getExamSession, markExamQuestionViewed, startExam, submitExam, submitEx
 import { currentQuestion, hydrateExam, initialExamState, questionsForCurrentSection, reduceExamState, remainingSectionMs } from '@/lib/examEngine';
 import type { ExamResult, ExamSession } from '@/types/exam';
 
-function nowMs(): number { return Date.now(); }\n\nfunction promptText(prompt: unknown): string {
+function nowMs(): number { return Date.now(); }
+
+function promptText(prompt: unknown): string {
   if (typeof prompt === 'string') return prompt;
   if (prompt && typeof prompt === 'object') {
     const value = prompt as Record<string, unknown>;
