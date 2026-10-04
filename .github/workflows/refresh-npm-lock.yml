@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   refresh:
-    if: "!contains(github.event.head_commit.message, 'Refresh npm lockfile')"
+    if: github.head_ref == 'fix/security-hardening-oct-2026'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -23,7 +23,9 @@ jobs:
         run: rm -f package-lock.json && npm install --package-lock-only --ignore-scripts && node -e "const l=require('./package-lock.json'); console.log('LOCK', l.packages['node_modules/next']?.version, l.packages['node_modules/vitest']?.version, l.packages['node_modules/@vitest/mocker']?.version);"
       - name: Commit lockfile if changed
         run: |
-          git status --short\ngit add -A\nif git diff --cached --quiet; then
+          git status --short
+          git add -A
+          if git diff --cached --quiet; then
             echo "No lockfile changes required."
             exit 0
           fi
