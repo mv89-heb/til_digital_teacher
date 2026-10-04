@@ -72,7 +72,8 @@ export default function AITeacherPage() {
       try {
         const result = await getTeacherLesson(search.trim(), token, { mode: 'learn' });
         setSearchResults(result.question && typeof result.question === 'object' ? [result.question as TeacherQuestion] : []);
-        if (result?.stats) setStats((current) => ({ ...current, questions: result.stats.total_questions, lessons: result.stats.total_lessons }));
+        const searchStats = result.stats;
+        if (searchStats) setStats((current) => ({ ...current, questions: searchStats.total_questions, lessons: searchStats.total_lessons }));
       } catch {
         setSearchResults([]);
       }
@@ -92,7 +93,8 @@ export default function AITeacherPage() {
     try {
       const result = await getTeacherLesson(prompt, token, { mode, questionId: selectedQuestionId ?? undefined });
       const text = result?.answer || 'לא הצלחתי לבנות תשובה כרגע.';
-      if (result?.stats) setStats((current) => ({ ...current, questions: result.stats.total_questions, lessons: result.stats.total_lessons }));
+      const responseStats = result.stats;
+      if (responseStats) setStats((current) => ({ ...current, questions: responseStats.total_questions, lessons: responseStats.total_lessons }));
       if (result?.student_profile) setProfile(result.student_profile);
       setMessages((current) => [...current, { role: 'assistant', text }]);
     } catch (requestError) {
