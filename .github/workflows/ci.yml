@@ -75,3 +75,28 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: https://til-digital-teacher-0ryl.onrender.com/api
         run: npm run build
+
+
+  refresh-frontend-lockfile:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/security-hardening-oct-2026'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Regenerate lockfile
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Commit lockfile
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/package-lock.json
+          git diff --cached --quiet || git commit -m "chore: refresh frontend lockfile [skip ci]"
+          git push
