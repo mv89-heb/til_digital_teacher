@@ -58,7 +58,7 @@ export default function LessonPage() {
     }
     const saved = Number(window.localStorage.getItem(`${STORAGE_PREFIX}${lessonId}`));
     if (Number.isInteger(saved) && saved >= 0 && saved < lesson.content_blocks.length) {
-      setCurrentIndex(saved);
+      window.setTimeout(() => setCurrentIndex(saved), 0);
     }
   }, [lesson, lessonId, progress?.completed]);
 
