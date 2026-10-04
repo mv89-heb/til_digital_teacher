@@ -84,7 +84,7 @@ export default function LessonPage() {
       queryClient.setQueryData(['lesson-progress', lessonId], newProgress);
       if (typeof window !== 'undefined') window.localStorage.removeItem(`${STORAGE_PREFIX}${lessonId}`);
       showToast(`🏆 שיעור הושלם! (+${newProgress.xp_earned} XP)`, 'success');
-      fetchApi('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      fetchApi<{ user: { xp_total: number } }>('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
         .then((data) => updateXp(data.user.xp_total))
         .catch(() => {});
     },
