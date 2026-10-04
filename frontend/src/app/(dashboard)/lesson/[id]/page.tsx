@@ -94,7 +94,7 @@ export default function LessonPage() {
     showToast(`+${xpEarned} XP`, 'success');
     getLessonProgress(lessonId, token as string)
       .then((p) => queryClient.setQueryData(['lesson-progress', lessonId], p));
-    fetchApi('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+    fetchApi<{ user: { xp_total: number } }>('/auth/me', { headers: { Authorization: `Bearer ${token}` } })
       .then((data) => updateXp(data.user.xp_total))
       .catch(() => {});
   };
