@@ -1,6 +1,6 @@
 import os
 
-from app.core.security_policy import require_production_config, require_production_secret
+from app.core.security_policy import require_production_secret
 
 
 def _csv_env(name: str, default: str = "") -> list[str]:
