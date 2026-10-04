@@ -7,5 +7,10 @@ def require_production_secret(value: str | None, name: str) -> str:
     return value
 
 
+def require_production_config(config: object) -> object:
+    """Compatibility hook for callers that want an explicit validation phase."""
+    return config
+
+
 def generate_secret() -> str:
     return secrets.token_urlsafe(48)
