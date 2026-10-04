@@ -21,7 +21,7 @@ type ExamQuestion = {
   id: number;
   question_type?: string | null;
   prompt: unknown;
-  visual_data?: MatrixVisual | ShapesVisual | null;
+  visual_data?: unknown;
   answers: Answer[];
 };
 
@@ -42,7 +42,7 @@ function richText(value: unknown): string {
 }
 
 export function QuestionRenderer({ question, selectedAnswerId, disabled, onSelect }: Props) {
-  const visual = question.visual_data;
+  const visual = question.visual_data && typeof question.visual_data === 'object' ? question.visual_data as MatrixVisual | ShapesVisual : null;
 
   return (
     <section className="space-y-6" dir="rtl" aria-label="שאלה במבחן">
