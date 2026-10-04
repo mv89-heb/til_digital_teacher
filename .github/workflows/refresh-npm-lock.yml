@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: "20"
       - name: Refresh lockfile from audit fixes
-        run: npm install --package-lock-only --ignore-scripts
+        run: npm install next@16.3.8 eslint-config-next@16.3.8 vitest@4.1.11 --save-exact --package-lock-only --ignore-scripts
       - name: Commit lockfile if changed
         run: |
           if git diff --quiet -- frontend/package-lock.json; then
