@@ -52,3 +52,33 @@ def test_me_with_valid_token(client):
 def test_me_with_invalid_token(client):
     resp = client.get("/api/auth/me", headers={"Authorization": "Bearer garbage"})
     assert resp.status_code == 401
+
+
+def test_jwt_uses_active_app_secret(app, client):
+    client.post("/api/auth/register", json={"email": "secret@test.com", "password": "password123"})
+    app.config["SECRET_KEY"] = "a" * 48
+    login_resp = client.post(
+        "/api/auth/login",
+        json={"email": "secret@test.com", "password": "password123"},
+    )
+    assert login_resp.status_code == 200
+    token = login_resp.get_json()["data"]["token"]
+
+    import jwt
+
+    payload = jwt.decode(token, "a" * 48, algorithms=["HS256"])
+    assert payload["user_id"]
+
+
+def test_jwt_with_unknown_critical_header_is_rejected(app, client):
+    client.post("/api/auth/register", json={"email": "crit@test.com", "password": "password123"})
+    import jwt
+
+    token = jwt.encode(
+        {"user_id": 1},
+        app.config["SECRET_KEY"],
+        algorithm="HS256",
+        headers={"crit": ["unknown-extension"]},
+    )
+    resp = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401
