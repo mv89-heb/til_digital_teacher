@@ -1,8 +1,8 @@
 name: Refresh npm lockfile
 
 on:
-  push:
-    branches: ["fix/security-hardening-oct-2026"]
+  pull_request:
+    types: [synchronize, opened, reopened]
 
 permissions:
   contents: write
