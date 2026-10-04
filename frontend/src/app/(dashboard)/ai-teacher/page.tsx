@@ -10,6 +10,7 @@ import type { Category } from '@/types/learning';
 type Message = { role: 'user' | 'assistant'; text: string };
 type TeacherMode = 'learn' | 'guided' | 'practice' | 'mistake';
 type TeacherProfile = { attempts: number; accuracy: number | null; focus: string | null; strengths: { skill: string; accuracy: number }[]; weaknesses: { skill: string; accuracy: number }[] };
+type TeacherQuestion = { id: number; subcategory?: string; skill?: string; main_category?: string; question_type?: string; body?: unknown };
 
 const QUICK_PROMPTS = [
   { label: 'למד אותי נושא', icon: BookOpen, prompt: 'למד אותי את הנושא הזה מהבסיס, עם דוגמאות ותרגול.' },
@@ -24,16 +25,16 @@ const cleanText = (value: unknown): string => {
   if (typeof value === 'object' && value !== null && 'body' in value) return String((value as { body?: unknown }).body ?? '');
   return '';
 };
-const lessonTopic = (q: any) => q?.subcategory || q?.skill || q?.main_category || q?.question_type || 'הנושא הנוכחי';
+const lessonTopic = (q: TeacherQuestion) => q.subcategory || q.skill || q.main_category || q.question_type || 'הנושא הנוכחי';
 
 export default function AITeacherPage() {
   const token = useAuthStore((state) => state.token);
-  const [categories, setCategories] = useState<Category[]>([]);
+  
   const [mode, setMode] = useState<TeacherMode>('learn');
   const [input, setInput] = useState('');
   const [selectedQuestionId, setSelectedQuestionId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<TeacherQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -72,7 +73,7 @@ export default function AITeacherPage() {
     const timer = window.setTimeout(async () => {
       try {
         const result = await getTeacherLesson(search.trim(), token, { mode: 'learn' });
-        setSearchResults(result?.question ? [result.question] : []);
+        setSearchResults(result.question && typeof result.question === 'object' ? [result.question as TeacherQuestion] : []);
         if (result?.stats) setStats((current) => ({ ...current, questions: result.stats.total_questions, lessons: result.stats.total_lessons }));
       } catch {
         setSearchResults([]);
