@@ -26,4 +26,4 @@ def test_teacher_modes_are_distinct(client, student_token, auth_headers, app):
     assert responses["guided"]["answer"] != responses["learn"]["answer"]
     assert responses["practice"]["answer"] != responses["guided"]["answer"]
     assert responses["mistake"]["answer"] != responses["practice"]["answer"]
-    assert "solution_text" not in responses["practice"]["question"]
+    assert responses["practice"]["question"]["solution_text"] is None
