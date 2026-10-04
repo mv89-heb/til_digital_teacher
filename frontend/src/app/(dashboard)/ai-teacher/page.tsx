@@ -5,7 +5,6 @@ import { Brain, CheckCircle2, HelpCircle, Lightbulb, RotateCcw, Search, Send, Sp
 import Card from '@/components/ui/Card';
 import { getCategories, getTeacherLesson, submitTeacherFeedback } from '@/lib/api';
 import { useAuthStore } from '@/store/useAuthStore';
-import type { Category } from '@/types/learning';
 
 type Message = { role: 'user' | 'assistant'; text: string };
 type TeacherMode = 'learn' | 'guided' | 'practice' | 'mistake';
@@ -54,7 +53,6 @@ export default function AITeacherPage() {
       try {
         const categoryData = await getCategories();
         if (cancelled) return;
-        setCategories(categoryData);
         setStats((current) => ({ ...current, categories: categoryData.length, lessons: categoryData.reduce((sum, c) => sum + c.lesson_count, 0) }));
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'לא ניתן לטעון את קטלוג הלימוד.');
@@ -67,7 +65,7 @@ export default function AITeacherPage() {
 
   useEffect(() => {
     if (!token || !search.trim()) {
-      setSearchResults([]);
+      window.setTimeout(() => setSearchResults([]), 0);
       return;
     }
     const timer = window.setTimeout(async () => {
