@@ -31,7 +31,17 @@ from lesson_catalog import seed_curriculum
 from question_bank import build_question_bank
 
 ADMIN_EMAIL = "admin@til-teacher.local"
-ADMIN_PASSWORD = os.getenv("SEED_ADMIN_PASSWORD", "Admin12345!")
+
+
+def _required_seed_admin_password() -> str:
+    """Require an explicit strong password before creating the initial admin."""
+    password = os.getenv("SEED_ADMIN_PASSWORD") or ""
+    if len(password) < 16 or not password.strip():
+        raise RuntimeError(
+            "SEED_ADMIN_PASSWORD must be configured with at least 16 characters "
+            "before the initial admin account can be created."
+        )
+    return password
 
 
 def _rich(body: str) -> dict:
@@ -72,7 +82,7 @@ def seed_demo_data() -> dict:
     if not admin:
         admin = User(
             email=ADMIN_EMAIL,
-            password_hash=generate_password_hash(ADMIN_PASSWORD),
+            password_hash=generate_password_hash(_required_seed_admin_password()),
             role="admin",
         )
         db.session.add(admin)
