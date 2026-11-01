@@ -1,3 +1,5 @@
+import { describe, expect, it } from "vitest";
+
 import { GET } from "./route";
 
 describe("GET /api/health", () => {
