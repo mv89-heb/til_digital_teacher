@@ -65,6 +65,16 @@ jobs:
           node-version: "20"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Generate patched frontend lockfile
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          npm audit fix --package-lock-only --ignore-scripts || true
+        working-directory: frontend
+      - name: Upload patched frontend lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-frontend-lockfile
+          path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
       - name: Report frontend dependency advisories
