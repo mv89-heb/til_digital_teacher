@@ -7,7 +7,9 @@ from werkzeug.security import generate_password_hash
 
 
 @pytest.fixture
-def app():
+def app(monkeypatch):
+    # Seed tests must use an explicit test-only password, never a production default.
+    monkeypatch.setenv("SEED_ADMIN_PASSWORD", "test-only-seed-password-2026!")
     app = create_app("testing")
     with app.app_context():
         _db.create_all()
