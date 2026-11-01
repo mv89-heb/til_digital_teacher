@@ -95,14 +95,19 @@ def create_app(config_name=None):
     from app.api.exam_registration import register_exam_blueprints
     register_exam_blueprints(flask_app)
 
+    @flask_app.route("/health/live")
+    def liveness_check():
+        """Confirm the web process is serving requests without probing dependencies."""
+        return {"status": "alive"}, 200
+
     @flask_app.route("/health")
     def health_check():
-        """Liveness/readiness endpoint used by the hosting platform."""
+        """Readiness endpoint: verify the database required for application traffic."""
         try:
             db.session.execute(text("SELECT 1"))
             return {"status": "healthy", "database": "ok"}, 200
         except Exception:
-            flask_app.logger.exception("Health check database probe failed")
+            flask_app.logger.exception("Readiness check database probe failed")
             db.session.rollback()
             return {"status": "unhealthy", "database": "unavailable"}, 503
 
